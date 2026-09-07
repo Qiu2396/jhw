@@ -1,0 +1,85 @@
+# 聚搜影视 · 免费视频网站聚合导航
+
+一个本地运行的免费视频聚合工具：想看《凡人修仙传》，输入片名一搜，就知道收录的哪些免费资源站有、更新到多少集，并可直接在站内选集播放。
+
+> 本工具只做「搜索 + 导航 + 聚合」，不存储、不上传任何视频文件，内容均来自第三方公开站点。请支持正版（B 站、腾讯视频等平台的免费正版区已收录在「站点目录」）。
+
+## 功能
+
+- **聚合搜索**：一次输入，并发查询多个免费资源站（暴风 / 极速 / 量子 / 360 等），按片名+年份自动聚合去重
+- **站内播放**：自动解析剧集 m3u8 播放地址，内置 hls.js 播放器，支持选集、换线路、换站点
+- **站点管理**：源配置存于本地 SQLite 数据库，页面直接增删改、一键检测可用性
+- **✨ AI 更新网站**：AI 根据现有源推荐新资源站，后端逐个**真实验证**后自动入库；AI 体检分析源健康并给出维护建议（需自行配置任意 OpenAI 兼容服务：DeepSeek / Kimi / 智谱 / 通义 / Ollama 等）
+- **继续观看**：播放记录自动保存在本机浏览器，首页一键续播
+- **站点目录**：可搜索源 + 正版免费导航站（B 站、腾讯视频、央视频等）
+- **纯本地**：SQLite 单文件数据库 + 浏览器 localStorage，无账号无上传
+
+## 一键启动
+
+Windows：**双击 `start.bat`**
+
+Linux / macOS：
+
+```bash
+bash start.sh
+```
+
+首次运行会自动安装依赖并构建前端页面（需要联网，约 1 分钟），之后每次启动只需几秒。启动完成后浏览器自动打开 `http://localhost:3000`。
+
+> 前置条件：安装 [Node.js](https://nodejs.org) 18 或以上版本（LTS 即可），除此之外无需任何其他环境。
+
+## 手动启动（开发模式）
+
+```bash
+# 后端（端口 3000）
+cd server && npm install && npm start
+
+# 前端热更新开发（端口 5173，/api 自动代理到 3000）
+cd client && npm install && npm run dev
+```
+
+## 目录结构
+
+```
+├── start.bat / start.sh      一键启动脚本
+├── README.md
+├── docs/
+│   ├── 设计文档.md            架构、API、数据库、AI 模块、扩展指南
+│   └── 进度文档.md            每次调整的变更记录
+├── server/                   后端 Node.js + Express
+│   ├── src/index.js          入口：API + 源管理 + AI + 前端静态托管
+│   ├── src/db.js             SQLite 数据层（node:sqlite 内置，零依赖）
+│   ├── src/ai.js             AI 模块：发现新源/体检分析/配置
+│   ├── src/sources.js        种子源 + 导航站 + 热门词
+│   ├── src/aggregate.js      聚合搜索 / 详情解析 / 源探测
+│   ├── data/app.db           SQLite 数据库（首次启动自动创建）
+│   └── tools/probe.mjs       源可用性检测（npm run probe [关键词]）
+└── client/                   前端 Vue 3 + Vite + hls.js
+    └── src/components/       SearchBar / ResultCard / PlayerModal / SourcesView
+```
+
+## 常见问题
+
+**搜索没有结果？**
+在「站点目录」点「一键检测」看哪些源失效（或在 `server` 目录运行 `npm run probe 凡人修仙传`）。失效源可以直接「编辑」换域名、删除，或点「✨ AI 发现新源」让 AI 推荐并自动验证新源。
+
+**AI 功能怎么用？**
+「站点目录 → ⚙ AI 设置」里填写任意 OpenAI 兼容服务的信息：
+- 接口地址（Base URL）：如 `https://api.deepseek.com/v1`
+- 模型名：如 `deepseek-chat`
+- API Key：在对应服务商平台申请
+
+也支持 Kimi（`https://api.moonshot.cn/v1`）、智谱、通义、本地 Ollama（`http://localhost:11434/v1`）等。配置保存后即可使用「AI 发现新源」「AI 体检」。AI 推荐的每个源都会被真实请求验证，不可用的不会入库。
+
+**端口被占用？**
+换端口启动：Windows 运行 `start.bat 3100`（Linux/macOS 为 `bash start.sh 3100`）；开发模式用 `PORT=3100 npm start`。
+
+**改了前端代码没生效？**
+生产模式下后端托管的是 `client/dist` 构建产物。删除 `client/dist` 目录后重新运行 `start.bat`（会自动重新构建），或改用开发模式。
+
+**数据库文件在哪？**
+`server/data/app.db`（SQLite 单文件）。删除它重启服务即可恢复内置初始源。
+
+## 免责声明
+
+本项目仅供学习与技术研究所用。所链接与搜索的内容均由第三方站点提供，与本工具无关；如有侵权请联系对应站点删除。请在观看时支持正版平台。
