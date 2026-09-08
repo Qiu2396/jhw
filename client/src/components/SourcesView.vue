@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue';
+import AppIcon from './AppIcon.vue';
 import {
   getSources, addSource, putSource, removeSource, checkSources,
   getAiConfig, saveAiConfig, testAiConnection, aiDiscoverSources, aiAnalyzeHealth, aiLogs
@@ -251,7 +252,7 @@ const statusLabel = (s) => {
 
     <!-- 工具条 -->
     <div class="toolbar">
-      <button class="btn" @click="openNew">＋ 新增源</button>
+      <button class="btn" @click="openNew"><AppIcon name="plus" :size="14" /> 新增源</button>
       <button class="btn" :disabled="checking" @click="checkAll">
         <span v-if="checking" class="spin"></span> 一键检测
       </button>
@@ -480,7 +481,7 @@ h2 { margin: 0 0 6px; font-size: 22px; }
   background: var(--bg-soft);
 }
 .src-table tbody tr { transition: background 0.12s; }
-.src-table tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
+.src-table tbody tr:hover { background: var(--hover); }
 .src-table tbody tr:last-child td { border-bottom: none; }
 .src-table tr.off td { opacity: 0.5; }
 .src-table tr.added td { background: rgba(242, 185, 75, 0.06); }
@@ -493,7 +494,7 @@ h2 { margin: 0 0 6px; font-size: 22px; }
 .toggle {
   width: 42px; height: 23px;
   border-radius: 999px;
-  background: #262e45;
+  background: var(--surface-3);
   border: 1px solid var(--border);
   position: relative;
   transition: all 0.18s;
@@ -503,7 +504,7 @@ h2 { margin: 0 0 6px; font-size: 22px; }
   top: 2px; left: 3px;
   width: 17px; height: 17px;
   border-radius: 50%;
-  background: #7c869e;
+  background: var(--text-faint);
   transition: all 0.18s;
 }
 .toggle.on { background: rgba(242, 185, 75, 0.3); border-color: rgba(242, 185, 75, 0.5); }
@@ -540,7 +541,7 @@ h2 { margin: 0 0 6px; font-size: 22px; }
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(5, 7, 11, 0.8);
+  background: var(--mask);
   backdrop-filter: blur(6px);
   display: flex;
   align-items: center;

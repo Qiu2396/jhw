@@ -61,3 +61,34 @@ export const aiDiscoverSources = (autoAdd = true, count = 8) => postJSON('/api/a
 export const aiAnalyzeHealth = () => postJSON('/api/ai/analyze');
 
 export const aiLogs = () => getJSON('/api/ai/logs');
+
+/* ---- 音乐（免费听歌） ---- */
+
+export const searchMusic = (name, count = 30) =>
+  getJSON(`/api/music/search?name=${encodeURIComponent(name)}&count=${count}&_=${Date.now()}`);
+
+export const musicUrl = (songId, br = 320000) =>
+  getJSON(`/api/music/url?songId=${songId}&br=${br}&_=${Date.now()}`);
+
+export const musicLyric = (songId) =>
+  getJSON(`/api/music/lyric?songId=${songId}&_=${Date.now()}`);
+
+export const musicPic = (songId, size = 300) =>
+  getJSON(`/api/music/pic?songId=${songId}&size=${size}&_=${Date.now()}`);
+
+/* ---- 小说 ---- */
+
+export const novelSearch = (kw) =>
+  getJSON(`/api/novel/search?kw=${encodeURIComponent(kw)}&_=${Date.now()}`);
+
+export const novelToc = (src, url) =>
+  getJSON(`/api/novel/toc?src=${encodeURIComponent(src)}&url=${encodeURIComponent(url)}&_=${Date.now()}`);
+
+export const novelChapter = (src, url) =>
+  getJSON(`/api/novel/chapter?src=${encodeURIComponent(src)}&url=${encodeURIComponent(url)}&_=${Date.now()}`);
+
+/* ---- 电台音乐 ---- */
+
+export const popularRadio = () => getJSON(`/api/radio/popular?_=${Date.now()}`);
+
+export const searchRadio = (name) => getJSON(`/api/radio/search?name=${encodeURIComponent(name)}&_=${Date.now()}`);

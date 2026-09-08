@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>聚搜影视 · 免费视频网站聚合导航</title>
     <meta name="description" content="聚合搜索多个免费视频资源站，一部作品哪里能看、有几集，一搜便知" />
+    <script>
+      // 在应用挂载前设置主题，避免日间模式刷新时闪一下夜间配色
+      (function () {
+        try {
+          var t = localStorage.getItem('fv_theme')
+            || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          document.documentElement.dataset.theme = t;
+        } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

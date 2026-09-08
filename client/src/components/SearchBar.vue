@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue';
+import AppIcon from './AppIcon.vue';
 
 const props = defineProps({
   initial: { type: String, default: '' },
@@ -24,7 +25,7 @@ function submit() {
 
 <template>
   <form class="searchbar" :class="{ compact }" @submit.prevent="submit">
-    <span class="icon">🔍</span>
+    <span class="icon"><AppIcon name="search" :size="16" /></span>
     <input
       v-model="word"
       type="text"
@@ -51,7 +52,7 @@ function submit() {
   border-color: rgba(242, 185, 75, 0.55);
   box-shadow: 0 0 0 4px rgba(242, 185, 75, 0.1), var(--shadow-1);
 }
-.icon { font-size: 15px; opacity: 0.65; }
+.icon { color: var(--text-faint); display: flex; align-items: center; }
 input {
   flex: 1;
   min-width: 0;
@@ -67,7 +68,7 @@ input::placeholder { color: var(--text-faint); }
   height: 40px;
   border-radius: 11px;
   background: linear-gradient(135deg, var(--gold), var(--gold-2));
-  color: #201301;
+  color: var(--on-gold);
   font-weight: 600;
   font-size: 14px;
   white-space: nowrap;

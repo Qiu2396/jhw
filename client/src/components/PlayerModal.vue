@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import Hls from 'hls.js';
 import { getDetail } from '../api.js';
+import AppIcon from './AppIcon.vue';
 
 const props = defineProps({
   group: { type: Object, required: true },
@@ -196,7 +197,7 @@ onUnmounted(() => {
         </div>
         <div class="head-actions">
           <span v-if="currentName" class="now-playing">正在播放：{{ currentName }}</span>
-          <button class="btn small" @click="saveProgressNow(); emit('close')">关闭 ✕</button>
+          <button class="btn small" @click="saveProgressNow(); emit('close')"><AppIcon name="x" :size="13" /> 关闭</button>
         </div>
       </div>
 
@@ -215,12 +216,12 @@ onUnmounted(() => {
           <div v-if="currentUrl && error" class="player-error-note">{{ error }}</div>
 
           <div v-if="currentPlay && epIndex >= 0" class="ctrl-bar">
-            <button class="btn small" :disabled="epIndex <= 0" @click="playAt(-1)">⏮ 上一集</button>
+            <button class="btn small" :disabled="epIndex <= 0" @click="playAt(-1)"><AppIcon name="skip-back" :size="13" /> 上一集</button>
             <button
               class="btn small"
               :disabled="epIndex >= currentPlay.episodes.length - 1"
               @click="playAt(1)"
-            >下一集 ⏭</button>
+            >下一集 <AppIcon name="skip-forward" :size="13" /></button>
             <div class="rates">
               <button
                 v-for="r in RATES"
@@ -270,13 +271,16 @@ onUnmounted(() => {
             </div>
             <div class="side-label">{{ currentPlay.episodes.length }} 集</div>
             <div class="ep-list">
-              <button
+              <div
                 v-for="ep in currentPlay.episodes"
                 :key="ep.url"
                 class="ep"
                 :class="{ active: ep.url === currentUrl }"
+                role="button"
+                tabindex="0"
                 @click="play(ep.name, ep.url)"
-              >{{ ep.name }}</button>
+                @keydown.enter="play(ep.name, ep.url)"
+              >{{ ep.name }}</div>
             </div>
           </template>
           <div v-else-if="!loading" class="ep-tip dim">该源暂无剧集数据</div>
@@ -291,7 +295,7 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(5, 7, 11, 0.8);
+  background: var(--mask);
   backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
@@ -421,18 +425,25 @@ onUnmounted(() => {
   overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  grid-auto-rows: minmax(28px, auto);
   gap: 6px;
   align-content: start;
   padding-right: 4px;
 }
 .ep {
-  padding: 7px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 5px;
   border-radius: 7px;
   font-size: 12px;
+  line-height: 1.2;
   text-align: center;
   background: var(--surface-2);
   border: 1px solid transparent;
   color: var(--text-dim);
+  cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

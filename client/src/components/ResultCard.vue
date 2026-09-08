@@ -1,4 +1,6 @@
 <script setup>
+import AppIcon from './AppIcon.vue';
+
 const props = defineProps({
   group: { type: Object, required: true },
   favorite: { type: Boolean, default: false }
@@ -23,8 +25,8 @@ function onCoverError(e) {
         :class="{ on: favorite }"
         :title="favorite ? '取消收藏' : '收藏'"
         @click.stop="emit('toggleFav')"
-      >{{ favorite ? '★' : '☆' }}</button>
-      <div class="play-hint"><span>▶ 立即播放</span></div>
+      ><AppIcon name="star" :size="15" :class="{ filled: favorite }" /></button>
+      <div class="play-hint"><span><AppIcon name="play" :size="13" /> 立即播放</span></div>
     </div>
     <div class="info">
       <div class="title" :title="group.title">{{ group.title }}</div>
@@ -78,7 +80,7 @@ function onCoverError(e) {
   font-size: 42px;
   font-weight: 700;
   color: var(--gold);
-  background: linear-gradient(135deg, #262e4a, #1a2030);
+  background: linear-gradient(135deg, var(--cover-1), var(--cover-2));
 }
 .remarks {
   position: absolute;
@@ -102,8 +104,7 @@ function onCoverError(e) {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  font-size: 16px;
-  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
   color: #fff;
   background: rgba(8, 10, 16, 0.55);
   backdrop-filter: blur(6px);
@@ -112,6 +113,7 @@ function onCoverError(e) {
 }
 .card:hover .fav-btn, .fav-btn.on { opacity: 1; }
 .fav-btn:hover { transform: scale(1.12); background: rgba(8, 10, 16, 0.8); }
+.fav-btn .filled { fill: currentColor; }
 .fav-btn.on { color: var(--gold); }
 .play-hint {
   position: absolute;
@@ -124,10 +126,13 @@ function onCoverError(e) {
   transition: opacity 0.2s;
 }
 .play-hint span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   padding: 9px 20px;
   border-radius: 999px;
   background: linear-gradient(135deg, var(--gold), var(--gold-2));
-  color: #201301;
+  color: var(--on-gold);
   font-weight: 600;
   font-size: 14px;
   box-shadow: var(--shadow-gold);

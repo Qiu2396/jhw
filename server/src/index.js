@@ -11,6 +11,8 @@ import {
 import {
   getAiConfig, setAiConfig, aiDiscoverSources, aiAnalyzeHealth, aiTestConnection
 } from './ai.js';
+import { searchMusic, musicUrl, musicLyric, musicPic } from './music.js';
+import { novelSearch, novelToc, novelChapter, isAllowedNovelUrl } from './novel.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../client/dist');
@@ -19,6 +21,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '1mb' }));
+
+// API 响应一律禁止缓存，避免浏览器用过期的旧数据
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 
 /* ---------------- 搜索 / 详情 ---------------- */
 
@@ -186,11 +194,99 @@ app.get('/api/ai/logs', (_req, res) => {
   res.json({ logs: listAiLogs(30) });
 });
 
+/* ---------------- 音乐（免费听歌，GDStudio 聚合） ---------------- */
+
+app.get('/api/music/search', async (req, res) => {
+  const name = String(req.query.name || '').trim();
+  if (!name) return res.status(400).json({ error: '缺少关键词 name' });
+  try {
+    res.json({ songs: await searchMusic(name, parseInt(req.query.count) || 30) });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/music/url', async (req, res) => {
+  const songId = String(req.query.songId || '').trim();
+  if (!/^[0-9]+$/.test(songId)) return res.status(400).json({ error: 'songId 不合法' });
+  const br = Math.min(Math.max(parseInt(req.query.br) || 320000, 128000), 999000);
+  try {
+    res.json(await musicUrl(songId, br));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/music/lyric', async (req, res) => {
+  const songId = String(req.query.songId || '').trim();
+  if (!/^[0-9]+$/.test(songId)) return res.status(400).json({ error: 'songId 不合法' });
+  try {
+    res.json(await musicLyric(songId));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/music/pic', async (req, res) => {
+  const songId = String(req.query.songId || '').trim();
+  if (!/^[0-9]+$/.test(songId)) return res.status(400).json({ error: 'songId 不合法' });
+  try {
+    res.json(await musicPic(songId, Math.min(parseInt(req.query.size) || 300, 1300)));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+/* ---------------- 小说（文字阅读，杰奇/笔趣阁模板站代理解析） ---------------- */
+
+app.get('/api/novel/search', async (req, res) => {
+  const kw = String(req.query.kw || '').trim();
+  if (!kw) return res.status(400).json({ error: '缺少关键词 kw' });
+  if (kw.length > 40) return res.status(400).json({ error: '关键词过长' });
+  try {
+    res.json(await novelSearch(kw));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/novel/toc', async (req, res) => {
+  const src = String(req.query.src || '').trim();
+  const url = String(req.query.url || '').trim();
+  if (!src || !url) return res.status(400).json({ error: '缺少参数 src / url' });
+  if (!isAllowedNovelUrl(url)) return res.status(400).json({ error: 'url 不在收录源范围内' });
+  try {
+    res.json(await novelToc(src, url));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/novel/chapter', async (req, res) => {
+  const src = String(req.query.src || '').trim();
+  const url = String(req.query.url || '').trim();
+  if (!src || !url) return res.status(400).json({ error: '缺少参数 src / url' });
+  if (!isAllowedNovelUrl(url)) return res.status(400).json({ error: 'url 不在收录源范围内' });
+  try {
+    res.json(await novelChapter(src, url));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 /* ---------------- 前端静态托管（生产模式） ---------------- */
 
 if (fs.existsSync(DIST_DIR)) {
-  app.use(express.static(DIST_DIR));
+  // index.html 禁止缓存：否则发新版本后浏览器可能继续用旧壳加载旧 bundle
+  app.use(express.static(DIST_DIR, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    }
+  }));
   app.get(/^(?!\/api\/).*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
 }

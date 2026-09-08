@@ -156,10 +156,12 @@ export async function aggregateSearch(kw, { include, exclude } = {}) {
 function getSourceList({ include, exclude } = {}) {
   if (include) {
     const set = new Set(include.split(',').map(x => x.trim()).filter(Boolean));
-    // include 模式用于定点检测，不受 enabled 限制
+    // include 模式用于定点检测，不受 enabled / 最近检测状态限制
     return [...set].map(id => getSource(id)).filter(Boolean);
   }
   let list = listEnabledSources();
+  // 源变多后，跳过最近巡检确认失效的源，避免超时拖慢每次搜索
+  list = list.filter(s => s.last_check_status !== 'fail');
   if (exclude) {
     const set = new Set(exclude.split(',').map(x => x.trim()).filter(Boolean));
     list = list.filter(s => !set.has(s.id));

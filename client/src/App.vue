@@ -4,6 +4,11 @@ import SearchBar from './components/SearchBar.vue';
 import ResultCard from './components/ResultCard.vue';
 import PlayerModal from './components/PlayerModal.vue';
 import SourcesView from './components/SourcesView.vue';
+import MusicView from './components/MusicView.vue';
+import NovelView from './components/NovelView.vue';
+import MiniPlayer from './components/MiniPlayer.vue';
+import AppIcon from './components/AppIcon.vue';
+import { useMusicPlayer } from './musicStore.js';
 import { search, getSources } from './api.js';
 
 const view = ref('home');          // home | result | sites
@@ -13,6 +18,23 @@ const searchError = ref('');
 const groups = ref([]);
 const failed = ref([]);
 const tookMs = ref(0);
+
+// 全局音乐播放器（底部常驻条），queue 非空即显示并给内容让位
+const { queue: musicQueue } = useMusicPlayer();
+
+// ---- 日间 / 夜间主题 ----
+const THEME_KEY = 'fv_theme';
+const theme = ref(
+  localStorage.getItem(THEME_KEY) ||
+  (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+);
+function applyTheme() { document.documentElement.dataset.theme = theme.value; }
+function toggleTheme() {
+  theme.value = theme.value === 'dark' ? 'light' : 'dark';
+  localStorage.setItem(THEME_KEY, theme.value);
+  applyTheme();
+}
+applyTheme();
 
 const hotKeywords = ref([]);
 const navSites = ref([]);
@@ -162,6 +184,16 @@ function goSites() {
   location.hash = '#/sites';
 }
 
+function goMusic() {
+  view.value = 'music';
+  location.hash = '#/music';
+}
+
+function goNovel() {
+  view.value = 'novel';
+  location.hash = '#/novel';
+}
+
 function openPlayer(group, resume = null) {
   resumeItem.value = resume;
   activeGroup.value = group;
@@ -206,6 +238,10 @@ function parseHash() {
     else if (word) view.value = 'result';
   } else if (h === '#/sites') {
     view.value = 'sites';
+  } else if (h === '#/music') {
+    view.value = 'music';
+  } else if (h === '#/novel') {
+    view.value = 'novel';
   } else if (h === '' || h === '#/') {
     view.value = 'home';
   }
@@ -231,7 +267,7 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   <header class="topbar">
     <div class="container topbar-inner">
       <div class="logo" @click="goHome">
-        <span class="logo-icon">▶</span>
+        <span class="logo-icon"><AppIcon name="play" :size="14" /></span>
         <span class="logo-text">聚搜影视</span>
         <span class="logo-sub">免费视频聚合导航</span>
       </div>
@@ -239,18 +275,25 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
         <SearchBar v-if="view !== 'home'" :initial="kw" :compact="true" @search="doSearch" />
       </div>
       <nav class="topnav">
-        <button :class="{ active: view !== 'sites' }" @click="goHome">首页</button>
+        <button :class="{ active: view !== 'sites' && view !== 'music' && view !== 'novel' }" @click="goHome">首页</button>
+        <button :class="{ active: view === 'music' }" @click="goMusic">音乐</button>
+        <button :class="{ active: view === 'novel' }" @click="goNovel">小说</button>
         <button :class="{ active: view === 'sites' }" @click="goSites">站点目录</button>
+        <button
+          class="theme-btn"
+          :title="theme === 'dark' ? '切换到日间模式' : '切换到夜间模式'"
+          @click="toggleTheme"
+        ><AppIcon :name="theme === 'dark' ? 'sun' : 'moon'" :size="17" /></button>
       </nav>
     </div>
   </header>
 
-  <main class="main">
+  <main class="main" :class="{ 'has-player': musicQueue.length }">
     <!-- 首页 -->
     <div v-if="view === 'home'" class="home">
       <section class="hero">
         <h1>一部作品，<span class="grad">哪里能看</span>，一搜便知</h1>
-        <p class="hero-sub">聚合搜索多个免费视频资源站 · 在线播放 · 无需注册</p>
+        <p class="hero-sub">慢下来 · 找一部想看的剧，听一首想听的歌，读完一段没读完的故事</p>
         <div class="hero-search">
           <SearchBar :initial="kw" @search="doSearch" />
         </div>
@@ -262,17 +305,17 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
 
       <section v-if="favorites.length" class="section">
         <div class="section-head">
-          <h2>⭐ 我的收藏</h2>
+          <h2 class="sec-h"><AppIcon name="star-full" :size="17" class="sec-ic" /> 我的收藏</h2>
         </div>
         <div class="history-row">
           <div v-for="f in favorites" :key="'fav-' + f.key" class="history-card" @click="resumeFav(f)">
             <img v-if="f.cover" :src="f.cover" loading="lazy" @error="e => e.target.style.display = 'none'" />
-            <div v-else class="cover-fallback">{{ f.title.slice(0, 1) }}</div>
+            <div v-else class="cover-fallback">{{ (f.title || "").slice(0, 1) }}</div>
             <div class="history-info">
               <div class="history-title">{{ f.title }}</div>
               <div class="history-ep">{{ f.remarks || f.type || '已收藏' }}</div>
             </div>
-            <button class="history-del fav-del" title="取消收藏" @click.stop="removeFav(f)">✕</button>
+            <button class="history-del fav-del" title="取消收藏" @click.stop="removeFav(f)"><AppIcon name="x" :size="12" /></button>
           </div>
         </div>
       </section>
@@ -285,31 +328,31 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
         <div class="history-row">
           <div v-for="h in history" :key="h.key + h.episodeUrl" class="history-card" @click="resumePlay(h)">
             <img v-if="h.cover" :src="h.cover" loading="lazy" @error="e => e.target.style.display = 'none'" />
-            <div v-else class="cover-fallback">{{ h.title.slice(0, 1) }}</div>
+            <div v-else class="cover-fallback">{{ (h.title || "").slice(0, 1) }}</div>
             <div class="history-info">
               <div class="history-title">{{ h.title }}</div>
               <div class="history-ep">{{ h.episodeName }} · {{ h.sourceName }}</div>
             </div>
-            <button class="history-del" title="删除" @click.stop="removeHistory(h)">✕</button>
+            <button class="history-del" title="删除" @click.stop="removeHistory(h)"><AppIcon name="x" :size="12" /></button>
           </div>
         </div>
       </section>
 
       <section class="section features">
         <div class="feature">
-          <div class="feature-icon">🔍</div>
+          <div class="feature-icon"><AppIcon name="search" :size="26" /></div>
           <h3>聚合搜索</h3>
-          <p>一次输入，同时查询收录的多个免费资源站，按片名自动聚合去重。</p>
+          <p>一次输入，同时问遍多个免费资源站。把找片的时间，留给喜欢的剧情。</p>
         </div>
         <div class="feature">
-          <div class="feature-icon">📺</div>
+          <div class="feature-icon"><AppIcon name="monitor" :size="26" /></div>
           <h3>站内播放</h3>
-          <p>自动解析剧集播放地址（m3u8），内置播放器直接观看，支持选集与换源。</p>
+          <p>自动解析播放地址，点开就看。深夜追剧，记得把音量调小一点。</p>
         </div>
         <div class="feature">
-          <div class="feature-icon">🗂️</div>
-          <h3>站点目录</h3>
-          <p>收录可用资源站与正版免费平台，标注状态，随时了解哪些站活着。</p>
+          <div class="feature-icon"><AppIcon name="headphones" :size="26" /></div>
+          <h3>听歌 · 阅读</h3>
+          <p>治愈歌单免费听，小说全本慢慢读。音乐挂在底部，切页不打断，边听边看。</p>
         </div>
       </section>
     </div>
@@ -372,16 +415,26 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
       </div>
     </div>
 
+    <!-- 音乐频道 -->
+    <MusicView v-else-if="view === 'music'" />
+
+    <!-- 小说频道 -->
+    <NovelView v-else-if="view === 'novel'" />
+
     <!-- 站点目录 -->
     <SourcesView v-else :sources="sources" :nav-sites="navSites" />
   </main>
 
-  <footer class="footer">
+  <footer class="footer" :class="{ 'with-player': musicQueue.length }">
     <div class="container">
       <p>本工具仅聚合公开搜索接口与链接，不存储、不上传任何视频文件。视频内容均来自第三方站点。</p>
       <p>请在观看时支持正版平台 · 如内容涉及侵权请联系相应站点删除</p>
+      <p class="footer-wish">愿每个夜晚都有剧可追、有歌可听、有故事可读 ☾</p>
     </div>
   </footer>
+
+  <!-- 全局迷你播放器：不随页面切换卸载，音乐不断 -->
+  <MiniPlayer />
 
   <PlayerModal
     v-if="activeGroup"
@@ -398,7 +451,7 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(10, 12, 17, 0.8);
+  background: var(--topbar-bg);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
 }
@@ -423,13 +476,15 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   height: 30px;
   border-radius: 9px;
   background: linear-gradient(135deg, var(--gold), var(--gold-2));
-  color: #201301;
-  font-size: 12px;
+  color: var(--on-gold);
   box-shadow: var(--shadow-gold);
-  padding-left: 2px;
 }
+.logo-icon .app-icon { margin-left: 1px; }
 .logo-text { font-size: 19px; font-weight: 700; letter-spacing: 0.5px; }
 .logo-sub { font-size: 12px; color: var(--text-faint); }
+.section-head h2 { font-size: 18px; margin: 0; }
+.sec-h { display: flex; align-items: center; gap: 8px; }
+.sec-ic { color: var(--gold); }
 .topbar-search { flex: 1; max-width: 480px; }
 .topnav { display: flex; gap: 4px; margin-left: auto; }
 .topnav button {
@@ -437,12 +492,16 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   border-radius: 9px;
   color: var(--text-dim);
   font-size: 14px;
+  line-height: 1.4;
+  user-select: none;
   transition: all 0.15s;
 }
-.topnav button:hover { color: var(--text); background: var(--surface-2); }
+.topnav button:hover { color: var(--text); background: var(--hover); }
 .topnav button.active { color: var(--gold); background: var(--gold-soft); }
+.theme-btn { font-size: 16px; line-height: 1; }
 
 .main { flex: 1; padding-bottom: 70px; }
+.main.has-player { padding-bottom: 130px; }
 
 /* ---------- 首页 ---------- */
 .home .hero { text-align: center; padding: 96px 20px 44px; animation: rise 0.5s ease both; }
@@ -467,7 +526,7 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   padding: 6px 16px;
   border-radius: 999px;
   font-size: 13px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text-dim);
   transition: all 0.18s;
@@ -514,7 +573,7 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
 }
 .cover-fallback {
   display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #2a3350, #1b2032);
+  background: linear-gradient(135deg, var(--cover-1), var(--cover-2));
   color: var(--gold);
   font-size: 20px;
   font-weight: 700;
@@ -524,7 +583,10 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
 .history-ep { font-size: 12px; color: var(--text-faint); margin-top: 3px; }
 .history-del {
   position: absolute; top: 4px; right: 6px;
-  color: var(--text-faint); font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  color: var(--text-faint);
   opacity: 0; transition: opacity 0.15s;
 }
 .history-card:hover .history-del { opacity: 1; }
@@ -548,7 +610,17 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   transform: translateY(-3px);
   box-shadow: var(--shadow-1);
 }
-.feature-icon { font-size: 26px; margin-bottom: 12px; }
+.feature-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px; height: 52px;
+  border-radius: 14px;
+  color: var(--gold);
+  background: var(--gold-soft);
+  border: 1px solid var(--border);
+  margin-bottom: 14px;
+}
 .feature h3 { margin: 0 0 8px; font-size: 16px; }
 .feature p { margin: 0; color: var(--text-dim); font-size: 14px; line-height: 1.7; }
 
@@ -613,9 +685,11 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   color: var(--text-faint);
   font-size: 12px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.01);
+  background: var(--footer-bg);
 }
+.footer.with-player { padding-bottom: 110px; }
 .footer p { margin: 4px 0; }
+.footer-wish { margin-top: 10px; color: var(--gold); opacity: 0.85; }
 
 @media (max-width: 720px) {
   .logo-sub { display: none; }
