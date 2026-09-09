@@ -12,7 +12,15 @@ const TOOLS = [
   { id: 'pdf2word', icon: 'file-text', title: 'PDF 转 Word', desc: '提取文本生成可编辑的 .docx（扫描件不支持）' },
   { id: 'removebg', icon: 'scissors', title: '一键抠图', desc: '本地 AI 模型去背景，输出透明 PNG' },
   { id: 'douyin', icon: 'video', title: '抖音无水印', desc: '粘贴分享链接，解析无水印视频直接下载' },
-  { id: 'resume', icon: 'user', title: '在线简历', desc: '左侧填写右侧实时预览，一键导出 PDF' }
+  { id: 'resume', icon: 'user', title: '在线简历', desc: '多份简历云同步，板块可排序，一键导出 PDF' },
+  { id: 'json', icon: 'braces', title: 'JSON 工具', desc: '格式化 / 压缩 / 校验，错误定位到行列' },
+  { id: 'timestamp', icon: 'clock', title: '时间戳转换', desc: 'Unix 时间戳与日期时间双向换算' },
+  { id: 'base64', icon: 'code', title: '编解码工具', desc: 'Base64 / URL 编码解码，支持中文' },
+  { id: 'uuid', icon: 'key', title: 'UUID / 密码', desc: '随机 UUID 与强密码批量生成' },
+  { id: 'regex', icon: 'search', title: '正则测试', desc: '实时匹配测试，列出全部命中' },
+  { id: 'hash', icon: 'hash', title: 'Hash 计算', desc: 'SHA-1 / 256 / 512，支持文本与文件' },
+  { id: 'color', icon: 'droplet', title: '颜色转换', desc: 'HEX / RGB / HSL 互转，实时预览' },
+  { id: 'diff', icon: 'list', title: '文本对比', desc: '两段文本逐行对比，标出差异' }
 ];
 
 const activeTool = ref('');
@@ -194,6 +202,222 @@ async function runDouyin() {
 function douyinProxy(download) {
   return `/api/tools/douyin/file?download=${download ? 1 : 0}&u=${encodeURIComponent(douyinInfo.value.playUrl)}`;
 }
+
+/* ================= 开发 / 实用小工具（全部本地计算，零依赖） ================= */
+
+/* ---- JSON 工具 ---- */
+const jsonInput = ref('');
+const jsonOut = ref('');
+const jsonErr = ref('');
+function jsonRun(mode) {
+  jsonErr.value = '';
+  jsonOut.value = '';
+  const s = jsonInput.value.trim();
+  if (!s) { jsonErr.value = '请先粘贴 JSON 内容'; return; }
+  try {
+    const obj = JSON.parse(s);
+    jsonOut.value = mode === 'min' ? JSON.stringify(obj) : JSON.stringify(obj, null, 2);
+  } catch (e) {
+    const m = /position (\d+)/.exec(e.message);
+    if (m) {
+      const pos = Number(m[1]);
+      const before = s.slice(0, pos);
+      const line = before.split('\n').length;
+      const col = pos - before.lastIndexOf('\n');
+      jsonErr.value = `语法错误：第 ${line} 行第 ${col} 列附近 — ${e.message.slice(0, 80)}`;
+    } else {
+      jsonErr.value = e.message.slice(0, 120);
+    }
+  }
+}
+
+/* ---- 时间戳转换 ---- */
+const tsInput = ref('');
+const tsOutput = ref('');
+const tsDate = ref('');             // datetime-local 值
+const nowTimer = ref(null);
+const nowStr = ref('');
+function tsFromStamp() {
+  const n = Number(tsInput.value.trim());
+  if (!isFinite(n) || n <= 0) { tsOutput.value = ''; return; }
+  const ms = n >= 1e12 ? n : n * 1000;          // 13 位毫秒 / 10 位秒
+  const d = new Date(ms);
+  tsOutput.value = isNaN(d.getTime()) ? '无效时间戳' : d.toLocaleString('zh-CN', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+}
+function tsFromDate() {
+  if (!tsDate.value) { tsOutput.value = ''; return; }
+  const d = new Date(tsDate.value);
+  tsOutput.value = isNaN(d.getTime()) ? '无效日期' : `秒 ${Math.floor(d.getTime() / 1000)} · 毫秒 ${d.getTime()}`;
+}
+function tsNow() {
+  const d = new Date();
+  nowStr.value = d.toLocaleString('zh-CN', { hour12: false }) + `  |  秒 ${Math.floor(d.getTime() / 1000)}  毫秒 ${d.getTime()}`;
+}
+
+/* ---- 编解码（Base64 / URL） ---- */
+const encMode = ref('b64e');
+const encInput = ref('');
+const encOutput = ref('');
+const encErr = ref('');
+function encRun() {
+  encErr.value = '';
+  encOutput.value = '';
+  const s = encInput.value;
+  if (!s) return;
+  try {
+    if (encMode.value === 'b64e') {
+      encOutput.value = btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+    } else if (encMode.value === 'b64d') {
+      const bytes = Uint8Array.from(atob(s.replace(/\s+/g, '')), c => c.charCodeAt(0));
+      encOutput.value = new TextDecoder().decode(bytes);
+    } else if (encMode.value === 'urle') {
+      encOutput.value = encodeURIComponent(s);
+    } else {
+      encOutput.value = decodeURIComponent(s.replace(/\+/g, ' '));
+    }
+  } catch (e) {
+    encErr.value = '解码失败：内容不是合法的编码文本';
+  }
+}
+
+/* ---- UUID / 密码生成 ---- */
+const uuidList = ref([]);
+const pwLength = ref(16);
+const pwSets = ref({ upper: true, lower: true, digit: true, symbol: true });
+const pwList = ref([]);
+function genUuid(n = 5) {
+  uuidList.value = Array.from({ length: n }, () =>
+    (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    }))
+  );
+}
+function copyText(t) {
+  navigator.clipboard?.writeText(t);
+}
+function genPw(n = 5) {
+  const pools = {
+    upper: 'ABCDEFGHJKLMNPQRSTUVWXYZ', lower: 'abcdefghijkmnpqrstuvwxyz',
+    digit: '23456789', symbol: '!@#$%^&*?-_=+'
+  };
+  const chars = Object.entries(pwSets.value).filter(([, on]) => on).map(([k]) => pools[k]).join('');
+  if (!chars) { pwList.value = []; return; }
+  const rand = new Uint32Array(pwLength.value * n);
+  crypto.getRandomValues(rand);
+  pwList.value = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: pwLength.value }, (_, j) => chars[rand[i * pwLength.value + j] % chars.length]).join('')
+  );
+}
+
+/* ---- 正则测试 ---- */
+const rePattern = ref('');
+const reFlags = ref('g');
+const reText = ref('');
+const reMatches = computed(() => {
+  if (!rePattern.value || !reText.value) return [];
+  try {
+    const re = new RegExp(rePattern.value, reFlags.value.includes('g') ? reFlags.value : reFlags.value + 'g');
+    return [...reText.value.matchAll(re)].slice(0, 200).map(m => ({
+      text: m[0],
+      index: m.index,
+      groups: m.slice(1).filter(g => g !== undefined)
+    }));
+  } catch {
+    return null;    // 正则语法错误
+  }
+});
+
+/* ---- Hash 计算 ---- */
+const hashInput = ref('');
+const hashFile = ref(null);
+const hashOut = ref({});
+const hashRunning = ref(false);
+async function hashRun() {
+  const algo = ['SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'];
+  hashOut.value = {};
+  if (!hashInput.value && !hashFile.value) return;
+  hashRunning.value = true;
+  try {
+    const data = hashFile.value
+      ? await hashFile.value.arrayBuffer()
+      : new TextEncoder().encode(hashInput.value);
+    for (const a of algo) {
+      const buf = await crypto.subtle.digest(a, data);
+      hashOut.value[a] = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch (e) {
+    hashOut.value = { error: e.message };
+  } finally {
+    hashRunning.value = false;
+  }
+}
+function onHashFile(e) {
+  hashFile.value = e.target.files?.[0] || null;
+  hashInput.value = '';
+  hashOut.value = {};
+}
+
+/* ---- 颜色转换 ---- */
+const colorHex = ref('#2f6fed');
+const colorRgb = computed(() => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(colorHex.value.trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+});
+const colorHsl = computed(() => {
+  if (!colorRgb.value) return null;
+  const { r, g, b } = colorRgb.value;
+  const R = r / 255, G = g / 255, B = b / 255;
+  const max = Math.max(R, G, B), min = Math.min(R, G, B);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l: Math.round(l * 100) };
+  const dd = max - min;
+  const s = l > 0.5 ? dd / (2 - max - min) : dd / (max + min);
+  let h;
+  if (max === R) h = ((G - B) / dd + (G < B ? 6 : 0));
+  else if (max === G) h = (B - R) / dd + 2;
+  else h = (R - G) / dd + 4;
+  return { h: Math.round(h * 60), s: Math.round(s * 100), l: Math.round(l * 100) };
+});
+const colorError = computed(() => {
+  return /^#?([0-9a-f]{6}|[0-9a-f]{3})$/i.test(colorHex.value.trim()) ? '' : '请输入 6 位 HEX 颜色值，如 #2f6fed';
+});
+
+/* ---- 文本对比 ---- */
+const diffLeft = ref('');
+const diffRight = ref('');
+const diffResult = computed(() => {
+  const a = diffLeft.value.split('\n');
+  const b = diffRight.value.split('\n');
+  if (a.length * b.length > 250000) return null;   // 防卡死
+  // LCS DP
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const out = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push({ t: 'same', s: a[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: 'del', s: a[i] }); i++; }
+    else { out.push({ t: 'add', s: b[j] }); j++; }
+  }
+  while (i < n) out.push({ t: 'del', s: a[i++] });
+  while (j < m) out.push({ t: 'add', s: b[j++] });
+  return out;
+});
+const diffStats = computed(() => {
+  const r = diffResult.value;
+  if (!r) return { add: 0, del: 0, same: 0 };
+  const c = { add: 0, del: 0, same: 0 };
+  for (const x of r) c[x.t]++;
+  return c;
+});
 
 function openTool(id) {
   if (id === 'resume') { location.hash = '#/resume'; return; }   // 简历是独立编辑器页面
@@ -389,6 +613,158 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+
+      <!-- JSON 工具 -->
+      <div v-else-if="activeTool === 'json'" class="work">
+        <textarea v-model="jsonInput" class="big-ta" rows="9" placeholder='粘贴 JSON，如 {"name":"聚搜王","ok":true}' />
+        <div class="opts">
+          <button class="btn primary" @click="jsonRun('pretty')">格式化</button>
+          <button class="btn" @click="jsonRun('min')">压缩</button>
+          <button v-if="jsonOut" class="btn" @click="copyText(jsonOut)">复制结果</button>
+        </div>
+        <p v-if="jsonErr" class="t-error">⚠ {{ jsonErr }}</p>
+        <textarea v-if="jsonOut" class="big-ta" rows="9" readonly :value="jsonOut" />
+      </div>
+
+      <!-- 时间戳转换 -->
+      <div v-else-if="activeTool === 'timestamp'" class="work">
+        <div class="now-line">
+          <b>当前时间</b> {{ nowStr || '—' }}
+          <button class="btn small" @click="tsNow">刷新</button>
+        </div>
+        <div class="opts">
+          <input v-model="tsInput" class="grow" placeholder="输入时间戳（10 位秒 / 13 位毫秒）" @input="tsFromStamp" />
+        </div>
+        <div class="opts">
+          <input v-model="tsDate" type="datetime-local" step="1" @input="tsFromDate" />
+        </div>
+        <div v-if="tsOutput" class="result-line">{{ tsOutput }}</div>
+        <p class="dim tip-line">在上方输入时间戳，或用日期选择器选时间，结果实时显示在这里。</p>
+      </div>
+
+      <!-- 编解码工具 -->
+      <div v-else-if="activeTool === 'base64'" class="work">
+        <div class="opts">
+          <select v-model="encMode">
+            <option value="b64e">Base64 编码</option>
+            <option value="b64d">Base64 解码</option>
+            <option value="urle">URL 编码</option>
+            <option value="urld">URL 解码</option>
+          </select>
+        </div>
+        <textarea v-model="encInput" class="big-ta" rows="6" placeholder="输入内容" @input="encRun" />
+        <p v-if="encErr" class="t-error">⚠ {{ encErr }}</p>
+        <textarea v-if="encOutput" class="big-ta" rows="6" readonly :value="encOutput" />
+        <div class="opts" v-if="encOutput">
+          <button class="btn" @click="copyText(encOutput)">复制结果</button>
+        </div>
+      </div>
+
+      <!-- UUID / 密码 -->
+      <div v-else-if="activeTool === 'uuid'" class="work">
+        <h4 class="sub-h">UUID v4</h4>
+        <div class="opts">
+          <button class="btn primary" @click="genUuid(5)">生成 5 个</button>
+          <button class="btn" @click="genUuid(1)">生成 1 个</button>
+        </div>
+        <div v-for="(u, i) in uuidList" :key="i" class="result-line mono">
+          {{ u }}
+          <button class="entry-ops-inline" title="复制" @click="copyText(u)">复制</button>
+        </div>
+
+        <h4 class="sub-h" style="margin-top: 26px">随机密码</h4>
+        <div class="opts">
+          <label class="opt"><span>长度 {{ pwLength }}</span>
+            <input type="range" min="8" max="64" v-model.number="pwLength" />
+          </label>
+          <label class="opt chk"><input type="checkbox" v-model="pwSets.upper" /> 大写</label>
+          <label class="opt chk"><input type="checkbox" v-model="pwSets.lower" /> 小写</label>
+          <label class="opt chk"><input type="checkbox" v-model="pwSets.digit" /> 数字</label>
+          <label class="opt chk"><input type="checkbox" v-model="pwSets.symbol" /> 符号</label>
+          <button class="btn primary" @click="genPw(5)">生成 5 个</button>
+        </div>
+        <div v-for="(p, i) in pwList" :key="'p' + i" class="result-line mono">
+          {{ p }}
+          <button class="entry-ops-inline" title="复制" @click="copyText(p)">复制</button>
+        </div>
+      </div>
+
+      <!-- 正则测试 -->
+      <div v-else-if="activeTool === 'regex'" class="work">
+        <div class="opts">
+          <span class="opt-sep">/</span>
+          <input v-model="rePattern" class="grow mono" placeholder="输入正则表达式，如 \d+ 或 [一-龥]{2,}" />
+          <span class="opt-sep">/</span>
+          <input v-model="reFlags" class="flags mono" placeholder="gim" />
+        </div>
+        <textarea v-model="reText" class="big-ta" rows="7" placeholder="粘贴要测试的文本…" />
+        <p v-if="reMatches === null" class="t-error">⚠ 正则表达式语法有误</p>
+        <template v-else>
+          <div class="result-line">
+            命中 <b>{{ reMatches.length }}</b> 处
+          </div>
+          <div class="re-list">
+            <div v-for="(m, i) in reMatches" :key="i" class="re-item">
+              <span class="re-idx">#{{ i + 1 }}</span>
+              <code class="re-text">{{ m.text }}</code>
+              <span class="dim">位置 {{ m.index }}</span>
+              <code v-if="m.groups.length" class="re-group">分组: {{ m.groups.join(' | ') }}</code>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Hash 计算 -->
+      <div v-else-if="activeTool === 'hash'" class="work">
+        <textarea v-model="hashInput" class="big-ta" rows="5" placeholder="输入要计算哈希的文本（或选择下方文件）" @input="hashRun" />
+        <div class="opts">
+          <label class="btn">
+            选择文件<input type="file" style="display:none" @change="onHashFile" />
+          </label>
+          <span v-if="hashFile" class="dim">{{ hashFile.name }} ({{ fmtSize(hashFile.size) }})</span>
+          <span v-if="hashRunning" class="spin"></span>
+        </div>
+        <div v-if="Object.keys(hashOut).length" class="hash-list">
+          <div v-for="(v, k) in hashOut" :key="k" class="result-line mono">
+            <b>{{ k }}</b>
+            <code class="hash-val">{{ v }}</code>
+            <button class="entry-ops-inline" @click="copyText(v)">复制</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 颜色转换 -->
+      <div v-else-if="activeTool === 'color'" class="work">
+        <div class="opts">
+          <input v-model="colorHex" class="grow mono" placeholder="#2f6fed" />
+          <div class="swatch" :style="{ background: colorRgb ? colorHex : 'transparent' }"></div>
+        </div>
+        <p v-if="colorError" class="t-error">⚠ {{ colorError }}</p>
+        <template v-else-if="colorRgb">
+          <div class="result-line mono">RGB&nbsp;&nbsp;rgb({{ colorRgb.r }}, {{ colorRgb.g }}, {{ colorRgb.b }})</div>
+          <div class="result-line mono">HEX&nbsp;&nbsp;#{{ colorHex.replace('#', '').toUpperCase() }}</div>
+          <div class="result-line mono" v-if="colorHsl">HSL&nbsp;&nbsp;hsl({{ colorHsl.h }}, {{ colorHsl.s }}%, {{ colorHsl.l }}%)</div>
+        </template>
+      </div>
+
+      <!-- 文本对比 -->
+      <div v-else-if="activeTool === 'diff'" class="work">
+        <div class="diff-grid">
+          <textarea v-model="diffLeft" class="big-ta" rows="8" placeholder="原始文本…" />
+          <textarea v-model="diffRight" class="big-ta" rows="8" placeholder="修改后文本…" />
+        </div>
+        <p v-if="diffResult === null" class="t-error">⚠ 文本过长（单边超过 500 行），请精简后再对比</p>
+        <template v-else-if="diffLeft && diffRight">
+          <div class="result-line">
+            共 <b>{{ diffStats.add }}</b> 行新增 · <b>{{ diffStats.del }}</b> 行删除 · <b>{{ diffStats.same }}</b> 行相同
+          </div>
+          <div class="diff-out">
+            <div v-for="(l, i) in diffResult" :key="i" class="diff-line" :class="l.t">
+              <span class="diff-mark">{{ l.t === 'add' ? '+' : l.t === 'del' ? '-' : ' ' }}</span>{{ l.s }}
+            </div>
+          </div>
+        </template>
+      </div>
     </template>
 
     <!-- 隐藏文件选择器 -->
@@ -402,6 +778,80 @@ h2 { margin: 0 0 6px; }
 .page-h { display: flex; align-items: center; gap: 9px; }
 .h-icon { color: var(--gold); }
 .page-desc { color: var(--text-dim); margin: 0 0 24px; font-size: 14px; }
+
+/* ---- 开发/实用工具 ---- */
+.big-ta {
+  width: 100%;
+  min-height: 120px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: ui-monospace, Consolas, monospace;
+  line-height: 1.6;
+  resize: vertical;
+  margin-bottom: 10px;
+}
+.big-ta:focus { outline: none; border-color: rgba(242, 185, 75, 0.5); }
+.opts {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 10px; margin-bottom: 12px;
+}
+.opts .grow { flex: 1; min-width: 0; height: 36px; }
+.opts .flags { width: 60px; }
+.opt-sep { color: var(--text-faint); font-size: 16px; }
+.opt.chk { flex-direction: row; align-items: center; gap: 5px; font-size: 13px; color: var(--text-dim); }
+.opt.chk input { width: 15px; height: 15px; }
+.result-line {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  overflow-x: auto;
+}
+.mono, .re-text, .hash-val { font-family: ui-monospace, Consolas, monospace; }
+.hash-val { flex: 1; word-break: break-all; font-size: 12px; color: var(--blue); }
+.now-line { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 14px; }
+.tip-line { font-size: 12.5px; margin-top: 10px; }
+.sub-h { margin: 0 0 10px; font-size: 14px; color: var(--gold); }
+.swatch {
+  width: 42px; height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+.re-list { max-height: 420px; overflow-y: auto; }
+.re-item {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.re-item:last-child { border-bottom: none; }
+.re-idx { color: var(--text-faint); font-size: 12px; flex-shrink: 0; }
+.re-group { color: var(--blue); font-size: 12px; }
+.hash-list { margin-top: 6px; }
+.diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 720px) { .diff-grid { grid-template-columns: 1fr; } }
+.diff-out {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 0;
+  max-height: 480px;
+  overflow: auto;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12.5px;
+}
+.diff-line { padding: 1px 12px; white-space: pre-wrap; word-break: break-all; }
+.diff-line.add { background: rgba(52, 209, 137, 0.12); color: var(--green); }
+.diff-line.del { background: rgba(255, 107, 107, 0.12); color: var(--red); }
+.diff-mark { display: inline-block; width: 14px; color: var(--text-faint); }
 
 /* 工具卡片 */
 .t-grid {
