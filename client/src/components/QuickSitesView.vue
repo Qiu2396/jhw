@@ -312,7 +312,7 @@ function catOf(id) {
 }
 .qs-search:focus { border-color: rgba(242, 185, 75, 0.5); }
 
-.qs-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+.qs-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .chip {
   padding: 5px 14px;
   border-radius: 999px;
@@ -325,7 +325,7 @@ function catOf(id) {
 .chip:hover { color: var(--text); border-color: var(--border-strong); }
 .chip.active { color: var(--gold); border-color: rgba(242, 185, 75, 0.5); background: var(--gold-soft); font-weight: 600; }
 
-.qs-group { margin-bottom: 30px; }
+.qs-group { margin-bottom: 24px; }
 .qs-group-head {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 12px;

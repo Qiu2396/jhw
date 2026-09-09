@@ -390,7 +390,7 @@ h2 { margin: 0 0 6px; }
 .page-desc { color: var(--text-dim); margin: 0 0 24px; font-size: 14px; }
 
 /* ---- 继续读记录区（与听书同款） ---- */
-.rec-sec { margin: 0 0 26px; }
+.rec-sec { margin: 0 0 22px; }
 .rec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .blk-title { display: flex; align-items: center; gap: 7px; font-size: 15px; margin: 0; color: var(--gold); }
 .rec-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; }
@@ -434,7 +434,7 @@ h2 { margin: 0 0 6px; }
 .rec-card:hover .rec-del { opacity: 1; }
 .rec-del:hover { color: var(--red); }
 
-.n-search { display: flex; gap: 10px; margin-bottom: 22px; align-items: center; }
+.n-search { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
 .n-search input {
   flex: 1; max-width: 460px;
   height: 38px;

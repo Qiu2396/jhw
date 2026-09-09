@@ -320,7 +320,7 @@ h2 { margin: 0 0 6px; }
 .page-desc { color: var(--text-dim); margin: 0 0 24px; font-size: 14px; }
 
 /* ---- 继续听记录区 ---- */
-.rec-sec { margin: 0 0 26px; }
+.rec-sec { margin: 0 0 22px; }
 .rec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .blk-title { display: flex; align-items: center; gap: 7px; font-size: 15px; margin: 0; color: var(--gold); }
 .rec-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; }
@@ -364,7 +364,7 @@ h2 { margin: 0 0 6px; }
 .rec-card:hover .rec-del { opacity: 1; }
 .rec-del:hover { color: var(--red); }
 
-.ab-search { display: flex; gap: 10px; margin-bottom: 22px; align-items: center; }
+.ab-search { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
 .ab-search input {
   flex: 1; max-width: 460px;
   height: 38px;
@@ -426,7 +426,7 @@ h2 { margin: 0 0 6px; }
 .ab-book-intro { font-size: 12px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .src-row { display: flex; gap: 5px; flex-wrap: wrap; flex-shrink: 0; }
 
-.ab-book-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.ab-book-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 .ab-book-info { flex: 1; min-width: 220px; }
 .ab-book-title { font-size: 18px; display: block; margin-bottom: 6px; }
 .ab-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }

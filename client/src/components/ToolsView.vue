@@ -863,7 +863,7 @@ h2 { margin: 0 0 6px; }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 26px 24px;
+  padding: 22px 20px;
   cursor: pointer;
   transition: all 0.2s;
 }

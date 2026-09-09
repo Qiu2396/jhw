@@ -314,6 +314,16 @@ watch(user, () => { reloadHistories(); });
 // 切换频道时回到页面顶部，避免新频道停留在上一页的滚动位置
 watch(view, () => window.scrollTo({ top: 0 }));
 
+// 回到顶部按钮（长列表页实用）
+const showTop = ref(false);
+function onScroll() { showTop.value = window.scrollY > 600; }
+function toTop() {
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  catch { window.scrollTo(0, 0); }
+  // smooth 被环境禁用时的兜底
+  setTimeout(() => { if (window.scrollY > 4) window.scrollTo(0, 0); }, 600);
+}
+
 function parseHash() {
   const h = decodeURIComponent(location.hash || '');
   if (h.startsWith('#/search/')) {
@@ -356,10 +366,14 @@ onMounted(async () => {
     sources.value = data.sources || [];
   } catch { /* 后端未就绪时静默 */ }
   window.addEventListener('hashchange', parseHash);
+  window.addEventListener('scroll', onScroll, { passive: true });
   parseHash();
 });
 
-onUnmounted(() => window.removeEventListener('hashchange', parseHash));
+onUnmounted(() => {
+  window.removeEventListener('hashchange', parseHash);
+  window.removeEventListener('scroll', onScroll);
+});
 </script>
 
 <template>
@@ -600,6 +614,13 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
     </div>
   </footer>
 
+  <!-- 回到顶部 -->
+  <Transition name="fade">
+    <button v-if="showTop" class="back-top" :class="{ raised: musicQueue.length }" title="回到顶部" @click="toTop">
+      <AppIcon name="chevron-up" :size="17" />
+    </button>
+  </Transition>
+
   <!-- 登录 / 注册弹窗（可选，游客直接用） -->
   <AuthModal />
 
@@ -748,13 +769,35 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
 .link-btn { color: var(--gold); font-size: 12px; padding: 0; }
 .link-btn:hover { text-decoration: underline; }
 
+/* ---- 回到顶部 ---- */
+.back-top {
+  position: fixed;
+  right: 18px;
+  bottom: 26px;
+  z-index: 55;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-2);
+  transition: all 0.15s;
+}
+.back-top:hover { color: var(--gold); border-color: rgba(242, 185, 75, 0.5); }
+.back-top.raised { bottom: 112px; }
+@media (max-width: 720px) {
+  .back-top { right: 12px; bottom: 74px; }
+  .back-top.raised { bottom: 136px; }
+}
+
 .main { flex: 1; padding-bottom: 70px; }
 .main.has-player { padding-bottom: 130px; }
 
 /* ---------- 首页 ---------- */
-.home .hero { text-align: center; padding: 96px 20px 44px; animation: rise 0.5s ease both; }
+.home .hero { text-align: center; padding: 72px 20px 36px; animation: rise 0.5s ease both; }
 .hero h1 {
-  font-size: 40px;
+  font-size: 38px;
   margin: 0 0 14px;
   letter-spacing: 1px;
   font-weight: 700;
@@ -766,7 +809,7 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   background-clip: text;
   color: transparent;
 }
-.hero-sub { color: var(--text-dim); margin: 0 0 38px; font-size: 16px; }
+.hero-sub { color: var(--text-dim); margin: 0 0 32px; font-size: 16px; }
 .hero-search { max-width: 660px; margin: 0 auto 28px; }
 .hot { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; }
 .hot-label { color: var(--text-faint); font-size: 13px; }
@@ -786,7 +829,7 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   transform: translateY(-2px);
 }
 
-.section { max-width: 1220px; margin: 40px auto 0; padding: 0 24px; }
+.section { max-width: 1220px; margin: 30px auto 0; padding: 0 24px; }
 .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .section-head h2 { font-size: 18px; margin: 0; }
 .history-row {
@@ -844,7 +887,7 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
-  margin-top: 56px;
+  margin-top: 40px;
 }
 .feature {
   background: var(--surface);
@@ -960,7 +1003,7 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   .user-btn { padding: 0 10px; gap: 4px; }
   .login-btn { padding: 0 11px; }
   .hero h1 { font-size: 26px; }
-  .hero { padding-top: 56px; }
+  .hero { padding-top: 44px; }
   .container { padding: 0 16px; }
   .history-card { flex: 0 0 168px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }

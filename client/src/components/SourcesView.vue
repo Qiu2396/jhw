@@ -538,7 +538,7 @@ h2 { margin: 0 0 6px; font-size: 22px; }
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 9px 14px;
-  margin: 0 0 18px;
+  margin: 0 0 16px;
 }
 
 .toolbar {
@@ -546,7 +546,7 @@ h2 { margin: 0 0 6px; font-size: 22px; }
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .toolbar-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
 .btn.ai { border-color: rgba(242, 185, 75, 0.35); color: var(--gold); }
@@ -554,7 +554,7 @@ h2 { margin: 0 0 6px; font-size: 22px; }
 .ai-error { color: var(--red); font-size: 14px; margin: 0 0 14px; }
 .ai-running { display: flex; align-items: center; gap: 8px; color: var(--gold); font-size: 14px; margin: 0 0 14px; }
 
-.block { margin-bottom: 40px; }
+.block { margin-bottom: 32px; }
 .block-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
 .block-head h3, .block > h3 { font-size: 16px; margin: 0; }
 .block > h3 { margin-bottom: 12px; }

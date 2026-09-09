@@ -372,7 +372,7 @@ h2 { margin: 0 0 6px; }
 .page-desc { color: var(--text-dim); margin: 0 0 26px; font-size: 14px; }
 .page-desc .tip { color: var(--gold); }
 
-.blk-title { font-size: 16px; margin: 26px 0 12px; }
+.blk-title { font-size: 16px; margin: 22px 0 12px; }
 
 /* ---- 今天随机听点什么 ---- */
 .daily {
@@ -384,7 +384,7 @@ h2 { margin: 0 0 6px; }
   border: 1px solid rgba(242, 185, 75, 0.35);
   border-radius: var(--radius);
   padding: 16px 18px;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 .daily-icon { font-size: 34px; line-height: 1; }
 .daily-body { flex: 1; min-width: 180px; }
@@ -433,7 +433,7 @@ h2 { margin: 0 0 6px; }
 .pl-card .btn { flex-shrink: 0; }
 
 /* ---- 搜索 ---- */
-.m-search { display: flex; gap: 10px; margin-bottom: 18px; align-items: center; }
+.m-search { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
 .m-search input {
   flex: 1;
   max-width: 460px;
@@ -506,7 +506,7 @@ h2 { margin: 0 0 6px; }
 .m-empty { text-align: center; padding: 50px 0; }
 
 /* ---- 最近听过 ---- */
-.hist-sec { margin-bottom: 26px; }
+.hist-sec { margin-bottom: 22px; }
 .hist-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .hist-title { margin: 0; }
 .hist-list {
