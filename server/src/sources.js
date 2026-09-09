@@ -57,6 +57,30 @@ export const SEED_SOURCES = [
     tags: ['剧集', '电影'],
     enabled: false,
     note: '2026-09 检测接口异常，默认停用'
+  },
+  {
+    id: 'zuida',
+    name: '最大资源',
+    api: 'https://api.zuidapi.com/api.php/provide/vod',
+    web: '',
+    tags: ['电影', '剧集'],
+    enabled: true
+  },
+  {
+    id: 'yh',
+    name: '樱花资源',
+    api: 'https://yhzy.cc/api.php/provide/vod',
+    web: '',
+    tags: ['动漫'],
+    enabled: true
+  },
+  {
+    id: 'haohua',
+    name: '豪华资源',
+    api: 'https://hhzyapi.com/api.php/provide/vod',
+    web: '',
+    tags: ['电影', '剧集'],
+    enabled: true
   }
 ];
 

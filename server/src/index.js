@@ -16,10 +16,11 @@ import {
 import {
   getAiConfig, setAiConfig, aiDiscoverSources, aiAnalyzeHealth, aiTestConnection
 } from './ai.js';
-import { searchMusic, musicUrl, musicLyric, musicPic } from './music.js';
-import { novelSearch, novelToc, novelChapter, isAllowedNovelUrl } from './novel.js';
-import { audiobookSearch, audiobookBook, audiobookPlay, isAllowedAudiobookUrl } from './audiobook.js';
-import { comicSearch, comicBook, comicImages, isAllowedComicUrl } from './comic.js';
+import { searchMusic, musicUrl, musicLyric, musicPic, checkMusicSource } from './music.js';
+import { novelSearch, novelToc, novelChapter, isAllowedNovelUrl, checkNovelSource } from './novel.js';
+import { audiobookSearch, audiobookBook, audiobookPlay, isAllowedAudiobookUrl, checkAudiobookSource } from './audiobook.js';
+import { comicSearch, comicBook, comicImages, isAllowedComicUrl, checkComicSource } from './comic.js';
+import { listChannelSources, setDisabled } from './channel-sources.js';
 import toolsRouter from './tools.js';
 import { resourceSearch } from './resource.js';
 
@@ -298,6 +299,48 @@ app.get('/api/music/pic', async (req, res) => {
     res.json(await musicPic(songId, Math.min(parseInt(req.query.size) || 300, 1300)));
   } catch (e) {
     res.status(502).json({ error: e.message });
+  }
+});
+
+/* ---------------- 小说（文字阅读，杰奇/笔趣阁模板站代理解析） ---------------- */
+
+/* ---------------- 内置频道源（音乐/小说/听书/漫画，站点目录展示与管理） ---------------- */
+
+const CHANNEL_CHECKERS = {
+  music: () => checkMusicSource(),
+  novel: (id) => checkNovelSource(id),
+  audiobook: (id) => checkAudiobookSource(id),
+  comic: (id) => checkComicSource(id)
+};
+
+// 公开读取：站点目录展示各频道内置源与启停状态
+app.get('/api/channel-sources', (_req, res) => {
+  res.json({ sources: listChannelSources() });
+});
+
+// 停用/启用（仅超级管理员）
+app.post('/api/channel-sources/toggle', requireAdmin, (req, res) => {
+  const { kind, id, disabled } = req.body || {};
+  const known = listChannelSources().some(s => s.kind === kind && s.id === id);
+  if (!known) return res.status(400).json({ error: '频道源不存在' });
+  setDisabled(String(kind), String(id), !!disabled);
+  const item = listChannelSources().find(s => s.kind === kind && s.id === id);
+  res.json({ ok: true, item });
+});
+
+// 单源检测（仅超级管理员）
+app.post('/api/channel-sources/check', requireAdmin, async (req, res) => {
+  const { kind, id } = req.body || {};
+  const checker = CHANNEL_CHECKERS[String(kind)];
+  if (!checker || !listChannelSources().some(s => s.kind === String(kind) && s.id === String(id))) {
+    return res.status(400).json({ error: '频道源不存在' });
+  }
+  try {
+    const started = Date.now();
+    const r = await checker(String(id));
+    res.json({ ok: !!r.ok, info: r.info, ms: Date.now() - started });
+  } catch (e) {
+    res.json({ ok: false, info: e.message || '检测失败', ms: 0 });
   }
 });
 

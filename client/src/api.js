@@ -85,6 +85,16 @@ export const removeSource = (id) =>
 
 export const checkSources = (id = 'all') => postJSON('/api/sources/check', { id });
 
+/* ---- 内置频道源（音乐/小说/听书/漫画） ---- */
+
+export const getChannelSources = () => getJSON('/api/channel-sources');
+
+export const toggleChannelSource = (kind, id, disabled) =>
+  postJSON('/api/channel-sources/toggle', { kind, id, disabled });
+
+export const checkChannelSource = (kind, id) =>
+  postJSON('/api/channel-sources/check', { kind, id });
+
 /* ---- AI ---- */
 
 export const getAiConfig = () => getJSON('/api/ai/config');

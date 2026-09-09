@@ -10,11 +10,14 @@
  * GET /api/music/pic?songId=xxx&size=300  取封面图
  */
 
+import { isDisabled } from './channel-sources.js';
+
 const API = 'https://music-api.gdstudio.xyz/api.php';
 const SOURCE = 'netease';
 const UA = 'JuSouMusic/0.1';
 
 async function gdFetch(params) {
+  if (isDisabled('music', 'gdstudio')) throw new Error('音乐源已停用（站点目录可重新启用）');
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 15000);
   try {
@@ -74,4 +77,10 @@ export async function musicLyric(songId) {
 export async function musicPic(songId, size = 300) {
   const r = await gdFetch({ types: 'pic', id: String(songId), size: String(size) });
   return { url: r.url || '' };
+}
+
+/** 单源探测（站点目录「检测」用） */
+export async function checkMusicSource() {
+  const list = await searchMusic('成都', 1);
+  return { ok: list.length > 0, info: list.length ? `命中 · ${list[0].name}` : '无结果' };
 }

@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
+import { isDisabled } from './channel-sources.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RULES = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'novel-rules.json'), 'utf8'));
@@ -97,6 +98,7 @@ function cleanContent($, rule) {
 
 /** 单源搜索（返回精确/模糊命中列表） */
 async function searchOneSource(rule, kw) {
+  if (isDisabled('novel', rule.id)) return [];
   const fields = parseData(rule.search.data || '{}', kw, rule.searchEnc || 'utf8');
   const body = Object.entries(fields).map(([k, v]) => `${k}=${v.replace(/ /g, '+')}`).join('&');
   const isPost = rule.search.method === 'post';
@@ -153,6 +155,7 @@ export async function novelSearch(kw) {
 export async function novelToc(sourceId, bookUrl) {
   const rule = getRule(sourceId);
   if (!rule) throw new Error('未知小说源');
+  if (isDisabled('novel', sourceId)) throw new Error('该源已停用（站点目录可重新启用）');
   const { html, finalUrl } = await fetchPage(bookUrl);
   let $ = cheerio.load(html);
   let base = finalUrl;
@@ -179,6 +182,7 @@ export async function novelToc(sourceId, bookUrl) {
 export async function novelChapter(sourceId, chapterUrl) {
   const rule = getRule(sourceId);
   if (!rule) throw new Error('未知小说源');
+  if (isDisabled('novel', sourceId)) throw new Error('该源已停用（站点目录可重新启用）');
   const { html } = await fetchPage(chapterUrl);
   const $ = cheerio.load(html);
   const title = ($(rule.chapter.title).first().text() || '').trim();
@@ -195,5 +199,18 @@ export function isAllowedNovelUrl(rawUrl) {
     return RULES.some(r => new URL(r.url).host === u.host);
   } catch {
     return false;
+  }
+}
+
+/** 单源探测（站点目录「检测」用） */
+export async function checkNovelSource(id) {
+  const rule = getRule(id);
+  if (!rule) return { ok: false, info: '未知源' };
+  try {
+    const list = await searchOneSource(rule, '斗破苍穹');
+    const hit = list.filter(b => b.bookName.includes('斗破'));
+    return { ok: hit.length > 0, info: hit.length ? `命中 · ${hit[0].bookName}` : `可用但无命中(${list.length})` };
+  } catch (e) {
+    return { ok: false, info: e?.name === 'AbortError' ? '超时' : (e.message || '请求失败') };
   }
 }

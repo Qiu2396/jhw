@@ -12,6 +12,7 @@
  */
 import * as cheerio from 'cheerio';
 import crypto from 'node:crypto';
+import { isDisabled } from './channel-sources.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const TIMEOUT_MS = 12000;
@@ -54,6 +55,7 @@ const yuetingba = {
   base: 'http://www.yuetingba.cn',
 
   async search(kw) {
+    if (isDisabled('audiobook', this.id)) return [];
     const { html, status } = await fetchPage(`${this.base}/Search?name=${encodeURIComponent(kw)}`);
     if (status >= 400) return [];
     const $ = cheerio.load(html);
@@ -253,11 +255,12 @@ function getSource(id) { return SOURCES[id]; }
 export async function audiobookSearch(kw) {
   const word = String(kw || '').trim();
   if (!word) throw new Error('缺少关键词 kw');
-  const settled = await Promise.allSettled(Object.values(SOURCES).map(s => s.search(word)));
+  const enabled = Object.values(SOURCES).filter(s => !isDisabled('audiobook', s.id));
+  const settled = await Promise.allSettled(enabled.map(s => s.search(word)));
   const books = [];
   const failed = [];
   settled.forEach((r, i) => {
-    const src = Object.values(SOURCES)[i];
+    const src = enabled[i];
     if (r.status === 'fulfilled') books.push(...r.value);
     else failed.push(src.name);
   });
@@ -276,13 +279,28 @@ export async function audiobookSearch(kw) {
 export async function audiobookBook(sourceId, bookUrl) {
   const src = getSource(sourceId);
   if (!src) throw new Error('未知听书源');
+  if (isDisabled('audiobook', sourceId)) throw new Error('该源已停用（站点目录可重新启用）');
   return src.book(bookUrl);
 }
 
 export async function audiobookPlay(sourceId, chapterUrl) {
   const src = getSource(sourceId);
   if (!src) throw new Error('未知听书源');
+  if (isDisabled('audiobook', sourceId)) throw new Error('该源已停用（站点目录可重新启用）');
   return src.play(chapterUrl);
+}
+
+/** 单源探测（站点目录「检测」用） */
+export async function checkAudiobookSource(id) {
+  const src = getSource(id);
+  if (!src) return { ok: false, info: '未知源' };
+  try {
+    const books = await src.search('斗破苍穹');
+    const hit = books.filter(b => (b.bookName || '').includes('斗破'));
+    return { ok: hit.length > 0, info: hit.length ? `命中 · ${hit[0].bookName}` : `可用但无命中(${books.length})` };
+  } catch (e) {
+    return { ok: false, info: e?.name === 'AbortError' ? '超时' : (e.message || '请求失败') };
+  }
 }
 
 /** SSRF 校验：目标 URL 必须属于已收录源 */

@@ -11,6 +11,7 @@
  * 安全：url 参数的 host 必须与已收录源一致（防 SSRF）。
  */
 import * as cheerio from 'cheerio';
+import { isDisabled } from './channel-sources.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const TIMEOUT_MS = 12000;
@@ -69,6 +70,7 @@ const wmanhua = {
   base: 'https://www.wmanhua.com',
 
   async search(kw) {
+    if (isDisabled('comic', this.id)) return [];
     const { html, status } = await fetchPage(`${this.base}/search?query=${encodeURIComponent(kw)}`);
     if (status >= 400) return [];
     const $ = cheerio.load(html);
@@ -146,7 +148,7 @@ function getSource(id) { return SOURCES[id]; }
 export async function comicSearch(kw) {
   const word = String(kw || '').trim();
   if (!word) throw new Error('缺少关键词 kw');
-  const list = Object.values(SOURCES);
+  const list = Object.values(SOURCES).filter(s => !isDisabled('comic', s.id));
   if (!list.length) throw new Error('暂无可用漫画源');
   const settled = await Promise.allSettled(list.map(s => s.search(word)));
   const comics = [];
@@ -170,13 +172,27 @@ export async function comicSearch(kw) {
 export async function comicBook(sourceId, bookUrl) {
   const src = getSource(sourceId);
   if (!src) throw new Error('未知漫画源');
+  if (isDisabled('comic', sourceId)) throw new Error('该源已停用（站点目录可重新启用）');
   return cached(bookCache, bookUrl, BOOK_TTL, () => src.book(bookUrl));
 }
 
 export async function comicImages(sourceId, chapterUrl) {
   const src = getSource(sourceId);
   if (!src) throw new Error('未知漫画源');
+  if (isDisabled('comic', sourceId)) throw new Error('该源已停用（站点目录可重新启用）');
   return cached(chapCache, chapterUrl, CHAP_TTL, () => src.images(chapterUrl));
+}
+
+/** 单源探测（站点目录「检测」用） */
+export async function checkComicSource(id) {
+  const src = getSource(id);
+  if (!src) return { ok: false, info: '未知源' };
+  try {
+    const comics = await src.search('斗破苍穹');
+    return { ok: comics.length > 0, info: comics.length ? `命中 · ${comics[0].name}` : '无结果' };
+  } catch (e) {
+    return { ok: false, info: e?.name === 'AbortError' ? '超时' : (e.message || '请求失败') };
+  }
 }
 
 /** SSRF 校验：目标 URL 必须属于已收录源 */

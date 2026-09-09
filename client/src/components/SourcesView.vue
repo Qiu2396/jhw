@@ -4,7 +4,8 @@ import AppIcon from './AppIcon.vue';
 import { useAuth } from '../authStore.js';
 import {
   getSources, addSource, putSource, removeSource, checkSources,
-  getAiConfig, saveAiConfig, testAiConnection, aiDiscoverSources, aiAnalyzeHealth, aiLogs
+  getAiConfig, saveAiConfig, testAiConnection, aiDiscoverSources, aiAnalyzeHealth, aiLogs,
+  getChannelSources, toggleChannelSource, checkChannelSource
 } from '../api.js';
 
 const { user, openAuth } = useAuth();
@@ -14,6 +15,45 @@ const isAdmin = computed(() => !!user.value?.isAdmin);
 const sources = ref([]);
 const navSites = ref([]);
 const loaded = ref(false);
+
+/* ---- 内置频道源（音乐/小说/听书/漫画） ---- */
+const chSources = ref([]);            // 各频道内置源清单
+const chCheckingId = ref('');         // 正在检测的 key（kind:id）
+const chCheckResult = ref({});        // key → { ok, info }
+const KIND_META = {
+  music: ['音乐', 'k-music'],
+  novel: ['小说', 'k-novel'],
+  audiobook: ['听书', 'k-audiobook'],
+  comic: ['漫画', 'k-comic']
+};
+
+async function loadChannelSources() {
+  try {
+    chSources.value = (await getChannelSources()).sources || [];
+  } catch { /* 后端未就绪时静默 */ }
+}
+
+async function toggleChSource(s) {
+  try {
+    await toggleChannelSource(s.kind, s.id, !s.disabled);
+    s.disabled = !s.disabled;
+  } catch (e) {
+    alert('操作失败：' + e.message);
+  }
+}
+
+async function checkChSource(s) {
+  const key = s.kind + ':' + s.id;
+  chCheckingId.value = key;
+  try {
+    const r = await checkChannelSource(s.kind, s.id);
+    chCheckResult.value[key] = { ok: r.ok, info: `${r.ok ? '正常' : '异常'} · ${r.info} · ${r.ms}ms` };
+  } catch (e) {
+    chCheckResult.value[key] = { ok: false, info: '检测失败：' + e.message };
+  } finally {
+    chCheckingId.value = '';
+  }
+}
 
 /* ---- 检测 ---- */
 const checking = ref(false);          // 一键检测中
@@ -233,6 +273,7 @@ async function loadSources() {
 onMounted(async () => {
   try {
     await loadSources();
+    await loadChannelSources();
     if (isAdmin.value) await loadAiCfg();   // AI 配置仅管理员可读
   } catch { /* 后端未就绪时静默 */ }
   loaded.value = true;
@@ -316,6 +357,40 @@ const statusLabel = (s) => {
     <section v-if="aiAnalysis" class="block ai-panel">
       <div class="block-head"><h3>🩺 AI 体检建议</h3></div>
       <div class="analysis-text">{{ aiAnalysis }}</div>
+    </section>
+
+    <!-- 内置频道源：音乐/小说/听书/漫画（各站一套解析规则，暂不支持网页新增） -->
+    <section class="block">
+      <div class="block-head">
+        <h3>内置频道源（音乐 / 小说 / 听书 / 漫画）</h3>
+      </div>
+      <div class="ch-list">
+        <div v-for="s in chSources" :key="s.kind + ':' + s.id" class="ch-row" :class="{ off: s.disabled }">
+          <span class="kind-badge" :class="KIND_META[s.kind] ? KIND_META[s.kind][1] : ''">{{ KIND_META[s.kind] ? KIND_META[s.kind][0] : s.kind }}</span>
+          <div class="ch-info">
+            <div class="ch-name">{{ s.name }}</div>
+            <div class="ch-desc dim">{{ s.desc }}</div>
+            <div v-if="chCheckResult[s.kind + ':' + s.id]" class="ch-check" :class="chCheckResult[s.kind + ':' + s.id].ok ? 'ok' : 'bad'">
+              {{ chCheckResult[s.kind + ':' + s.id].info }}
+            </div>
+          </div>
+          <div class="ch-ops">
+            <span class="badge" :class="s.disabled ? 'red' : 'green'">{{ s.disabled ? '已停用' : '启用' }}</span>
+            <template v-if="isAdmin">
+              <button class="btn small" :disabled="chCheckingId === s.kind + ':' + s.id" @click="checkChSource(s)">
+                <span v-if="chCheckingId === s.kind + ':' + s.id" class="spin"></span> 检测
+              </button>
+              <button class="toggle" :class="{ on: !s.disabled }" @click="toggleChSource(s)">
+                <span class="knob"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+      </div>
+      <p class="tip">
+        这些频道源内置于程序（每站一套解析规则），失效或停用后对应频道的搜索会跳过它。
+        <template v-if="!isAdmin">停用 / 检测需超级管理员操作。</template>
+      </p>
     </section>
 
     <!-- 可搜索源 -->
@@ -483,6 +558,31 @@ h2 { margin: 0 0 6px; font-size: 22px; }
 .block-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
 .block-head h3, .block > h3 { font-size: 16px; margin: 0; }
 .block > h3 { margin-bottom: 12px; }
+
+/* ---- 内置频道源 ---- */
+.ch-list { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.ch-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.ch-row:last-child { border-bottom: none; }
+.ch-row:hover { background: var(--hover); }
+.ch-row.off { opacity: 0.55; }
+.ch-info { flex: 1; min-width: 0; }
+.ch-name { font-size: 14px; font-weight: 600; }
+.ch-desc { font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-check { font-size: 12px; margin-top: 3px; }
+.ch-check.ok { color: var(--green); }
+.ch-check.bad { color: var(--red); }
+.ch-ops { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.kind-badge.k-music { background: var(--gold-soft); color: var(--gold); }
+.kind-badge.k-novel { background: rgba(90, 168, 255, 0.12); color: var(--blue); }
+.kind-badge.k-audiobook { background: rgba(226, 149, 42, 0.14); color: var(--gold-2); }
+.kind-badge.k-comic { background: rgba(52, 209, 137, 0.12); color: var(--green); }
 
 .ai-panel {
   position: relative;
