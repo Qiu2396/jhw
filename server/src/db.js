@@ -83,6 +83,16 @@ db.exec(`
     updated_at INTEGER DEFAULT (unixepoch()),
     UNIQUE(user_id, kind, item_key)
   );
+
+  CREATE TABLE IF NOT EXISTS resume_docs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    doc_id     TEXT NOT NULL,
+    title      TEXT DEFAULT '未命名简历',
+    data       TEXT DEFAULT '{}',
+    updated_at INTEGER DEFAULT (unixepoch()),
+    UNIQUE(user_id, doc_id)
+  );
 `);
 
 /* 种子迁移：表空时灌入内置源 */
@@ -223,6 +233,37 @@ export function deleteHistory(userId, kind, key) {
 export function clearHistories(userId, kind) {
   return db.prepare('DELETE FROM histories WHERE user_id = ? AND kind = ?')
     .run(userId, String(kind)).changes > 0;
+}
+
+/* ---------------- resume docs（在线简历，多文档云同步） ---------------- */
+
+export function listResumeDocs(userId) {
+  return db.prepare(
+    'SELECT doc_id, title, updated_at FROM resume_docs WHERE user_id = ? ORDER BY updated_at DESC'
+  ).all(userId).map(r => ({ docId: r.doc_id, title: r.title, updatedAt: r.updated_at * 1000 }));
+}
+
+export function getResumeDoc(userId, docId) {
+  const r = db.prepare('SELECT doc_id, title, data, updated_at FROM resume_docs WHERE user_id = ? AND doc_id = ?')
+    .get(userId, String(docId));
+  if (!r) return null;
+  let data = {};
+  try { data = JSON.parse(r.data || '{}'); } catch { /* 忽略坏数据 */ }
+  return { docId: r.doc_id, title: r.title, data, updatedAt: r.updated_at * 1000 };
+}
+
+export function upsertResumeDoc(userId, docId, { title, data }) {
+  db.prepare(
+    `INSERT INTO resume_docs (user_id, doc_id, title, data, updated_at)
+     VALUES (?, ?, ?, ?, unixepoch())
+     ON CONFLICT(user_id, doc_id) DO UPDATE SET
+       title = excluded.title, data = excluded.data, updated_at = excluded.updated_at`
+  ).run(userId, String(docId), String(title || '未命名简历'), JSON.stringify(data || {}));
+}
+
+export function deleteResumeDoc(userId, docId) {
+  return db.prepare('DELETE FROM resume_docs WHERE user_id = ? AND doc_id = ?')
+    .run(userId, String(docId)).changes > 0;
 }
 
 /* ---------------- settings ---------------- */

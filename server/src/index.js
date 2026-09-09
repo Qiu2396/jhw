@@ -7,7 +7,8 @@ import { aggregateSearch, fetchDetail, probeSourceApi } from './aggregate.js';
 import {
   listSources, getSource, insertSource, updateSource, deleteSource,
   updateCheckResult, listAiLogs,
-  upsertHistory, listHistories, deleteHistory, clearHistories
+  upsertHistory, listHistories, deleteHistory, clearHistories,
+  listResumeDocs, getResumeDoc, upsertResumeDoc, deleteResumeDoc
 } from './db.js';
 import {
   register, login, logout, toPublic, userForToken, tokenFromRequest,
@@ -453,6 +454,35 @@ app.get('/api/comic/images', async (req, res) => {
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
+});
+
+/* ---------------- 在线简历（多文档云同步，需登录；游客仅本机） ---------------- */
+
+const DOC_ID_RE = /^[a-zA-Z0-9_-]{1,40}$/;
+
+app.get('/api/resume', requireAuth, (req, res) => {
+  res.json({ docs: listResumeDocs(req.user.id) });
+});
+
+app.get('/api/resume/:docId', requireAuth, (req, res) => {
+  if (!DOC_ID_RE.test(req.params.docId)) return res.status(400).json({ error: 'docId 不合法' });
+  const doc = getResumeDoc(req.user.id, req.params.docId);
+  if (!doc) return res.status(404).json({ error: '简历不存在' });
+  res.json(doc);
+});
+
+app.put('/api/resume/:docId', requireAuth, (req, res) => {
+  const docId = String(req.params.docId || '');
+  if (!DOC_ID_RE.test(docId)) return res.status(400).json({ error: 'docId 不合法' });
+  const { title, data } = req.body || {};
+  if (typeof data !== 'object' || data === null) return res.status(400).json({ error: 'data 缺失' });
+  upsertResumeDoc(req.user.id, docId, { title: String(title || '未命名简历').slice(0, 60), data });
+  res.json({ ok: true, updatedAt: Date.now() });
+});
+
+app.delete('/api/resume/:docId', requireAuth, (req, res) => {
+  if (!DOC_ID_RE.test(req.params.docId)) return res.status(400).json({ error: 'docId 不合法' });
+  res.json({ ok: deleteResumeDoc(req.user.id, req.params.docId) });
 });
 
 /* ---------------- 小工具（压缩图片 / PDF 转 Word / 抠图 / 抖音无水印） ---------------- */

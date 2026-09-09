@@ -157,6 +157,22 @@ export const comicBook = (src, url) =>
 export const comicImages = (src, url) =>
   getJSON(`/api/comic/images?src=${encodeURIComponent(src)}&url=${encodeURIComponent(url)}&_=${Date.now()}`);
 
+/* ---- 在线简历（多文档云同步，需登录） ---- */
+
+export const listResume = () => getJSON('/api/resume');
+
+export const getResume = (docId) => getJSON(`/api/resume/${encodeURIComponent(docId)}`);
+
+export const saveResume = (docId, { title, data }) =>
+  request(`/api/resume/${encodeURIComponent(docId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, data })
+  });
+
+export const removeResume = (docId) =>
+  request(`/api/resume/${encodeURIComponent(docId)}`, { method: 'DELETE' });
+
 /* ---- 全文资源搜索 ---- */
 
 export const resourceSearch = (kw) =>
