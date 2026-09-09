@@ -24,6 +24,7 @@ const ComicView = defineAsyncComponent(() => import('./components/ComicView.vue'
 const ResourceView = defineAsyncComponent(() => import('./components/ResourceView.vue'));
 const ToolsView = defineAsyncComponent(() => import('./components/ToolsView.vue'));
 const ResumeEditor = defineAsyncComponent(() => import('./components/ResumeEditor.vue'));
+const QuickSitesView = defineAsyncComponent(() => import('./components/QuickSitesView.vue'));
 
 const view = ref('home');          // home | result | sites | audio | comic | tools
 const kw = ref('');
@@ -238,6 +239,11 @@ function goTools() {
   location.hash = '#/tools';
 }
 
+function goFav() {
+  view.value = 'fav';
+  location.hash = '#/fav';
+}
+
 function goResource() {
   view.value = 'resource';
   location.hash = '#/resource';
@@ -326,6 +332,8 @@ function parseHash() {
     view.value = 'comic';
   } else if (h === '#/tools') {
     view.value = 'tools';
+  } else if (h === '#/fav') {
+    view.value = 'fav';
   } else if (h === '#/resource') {
     view.value = 'resource';
   } else if (h === '#/resume') {
@@ -367,16 +375,17 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
       </div>
       <!-- 导航行：桌面整体靠右；移动端独占一行，导航横向滚动、用户/主题钉在行尾 -->
       <div class="nav-row">
-        <nav class="topnav">
-          <button :class="{ active: !['sites','music','novel','audio','comic','tools','resource'].includes(view) }" @click="goHome">首页</button>
-          <button :class="{ active: view === 'music' }" @click="goMusic">音乐</button>
-          <button :class="{ active: view === 'novel' }" @click="goNovel">小说</button>
-          <button :class="{ active: view === 'audio' }" @click="goAudio">听书</button>
-          <button :class="{ active: view === 'comic' }" @click="goComic">漫画</button>
-          <button :class="{ active: view === 'resource' }" @click="goResource">资源</button>
-          <button :class="{ active: view === 'tools' }" @click="goTools">工具</button>
-          <button :class="{ active: view === 'sites' }" @click="goSites">站点目录</button>
-        </nav>
+      <nav class="topnav">
+        <button :class="{ active: !['sites','music','novel','audio','comic','tools','resource','fav'].includes(view) }" @click="goHome">首页</button>
+        <button :class="{ active: view === 'music' }" @click="goMusic">音乐</button>
+        <button :class="{ active: view === 'novel' }" @click="goNovel">小说</button>
+        <button :class="{ active: view === 'audio' }" @click="goAudio">听书</button>
+        <button :class="{ active: view === 'comic' }" @click="goComic">漫画</button>
+        <button :class="{ active: view === 'fav' }" @click="goFav">常用网站</button>
+        <button :class="{ active: view === 'resource' }" @click="goResource">资源</button>
+        <button :class="{ active: view === 'tools' }" @click="goTools">工具</button>
+        <button :class="{ active: view === 'sites' }" @click="goSites">站点目录</button>
+      </nav>
 
         <!-- 用户区：游客可登录（可选），已登录显示身份 -->
         <div v-if="ready" class="user-area">
@@ -569,6 +578,9 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
 
     <!-- 小工具 -->
     <ToolsView v-else-if="view === 'tools'" />
+
+    <!-- 常用网站 -->
+    <QuickSitesView v-else-if="view === 'fav'" />
 
     <!-- 全文资源搜索 -->
     <ResourceView v-else-if="view === 'resource'" />
