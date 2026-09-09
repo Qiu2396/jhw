@@ -127,6 +127,12 @@ input { font-family: inherit; }
   padding: 0 24px;
 }
 
+/* 键盘导航焦点可见（操作可达性） */
+:focus-visible {
+  outline: 2px solid rgba(242, 185, 75, 0.65);
+  outline-offset: 2px;
+}
+
 /* ---------- 按钮 ---------- */
 .btn {
   display: inline-flex;

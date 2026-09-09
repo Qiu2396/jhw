@@ -13,6 +13,10 @@ import {
 } from './ai.js';
 import { searchMusic, musicUrl, musicLyric, musicPic } from './music.js';
 import { novelSearch, novelToc, novelChapter, isAllowedNovelUrl } from './novel.js';
+import { audiobookSearch, audiobookBook, audiobookPlay, isAllowedAudiobookUrl } from './audiobook.js';
+import { comicSearch, comicBook, comicImages, isAllowedComicUrl } from './comic.js';
+import toolsRouter from './tools.js';
+import { resourceSearch } from './resource.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../client/dist');
@@ -274,6 +278,97 @@ app.get('/api/novel/chapter', async (req, res) => {
   }
 });
 
+/* ---------------- 听书（有声小说，第三方站代理解析） ---------------- */
+
+app.get('/api/audiobook/search', async (req, res) => {
+  const kw = String(req.query.kw || '').trim();
+  if (!kw) return res.status(400).json({ error: '缺少关键词 kw' });
+  if (kw.length > 40) return res.status(400).json({ error: '关键词过长' });
+  try {
+    res.json(await audiobookSearch(kw));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/audiobook/book', async (req, res) => {
+  const src = String(req.query.src || '').trim();
+  const url = String(req.query.url || '').trim();
+  if (!src || !url) return res.status(400).json({ error: '缺少参数 src / url' });
+  if (!isAllowedAudiobookUrl(url)) return res.status(400).json({ error: 'url 不在收录源范围内' });
+  try {
+    res.json(await audiobookBook(src, url));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/audiobook/play', async (req, res) => {
+  const src = String(req.query.src || '').trim();
+  const url = String(req.query.url || '').trim();
+  if (!src || !url) return res.status(400).json({ error: '缺少参数 src / url' });
+  if (!isAllowedAudiobookUrl(url)) return res.status(400).json({ error: 'url 不在收录源范围内' });
+  try {
+    res.json(await audiobookPlay(src, url));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+/* ---------------- 漫画（第三方站代理解析） ---------------- */
+
+app.get('/api/comic/search', async (req, res) => {
+  const kw = String(req.query.kw || '').trim();
+  if (!kw) return res.status(400).json({ error: '缺少关键词 kw' });
+  if (kw.length > 40) return res.status(400).json({ error: '关键词过长' });
+  try {
+    res.json(await comicSearch(kw));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/comic/book', async (req, res) => {
+  const src = String(req.query.src || '').trim();
+  const url = String(req.query.url || '').trim();
+  if (!src || !url) return res.status(400).json({ error: '缺少参数 src / url' });
+  if (!isAllowedComicUrl(url)) return res.status(400).json({ error: 'url 不在收录源范围内' });
+  try {
+    res.json(await comicBook(src, url));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/comic/images', async (req, res) => {
+  const src = String(req.query.src || '').trim();
+  const url = String(req.query.url || '').trim();
+  if (!src || !url) return res.status(400).json({ error: '缺少参数 src / url' });
+  if (!isAllowedComicUrl(url)) return res.status(400).json({ error: 'url 不在收录源范围内' });
+  try {
+    res.json(await comicImages(src, url));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+/* ---------------- 小工具（压缩图片 / PDF 转 Word / 抠图 / 抖音无水印） ---------------- */
+
+app.use('/api/tools', toolsRouter);
+
+/* ---------------- 全文资源搜索（公开索引聚合） ---------------- */
+
+app.get('/api/resource/search', async (req, res) => {
+  const kw = String(req.query.kw || '').trim();
+  if (!kw) return res.status(400).json({ error: '缺少关键词 kw' });
+  if (kw.length > 60) return res.status(400).json({ error: '关键词过长' });
+  try {
+    res.json(await resourceSearch(kw));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 /* ---------------- 前端静态托管（生产模式） ---------------- */
 
 if (fs.existsSync(DIST_DIR)) {
@@ -334,7 +429,7 @@ startAutoCheck();
 app.listen(PORT, () => {
   console.log('');
   console.log('  ╭──────────────────────────────────────────╮');
-  console.log('  │   聚搜影视 已启动（SQLite + AI 已启用）   │');
+  console.log('  │   聚搜王 已启动（SQLite + AI 已启用）   │');
   console.log(`  │   打开浏览器访问  http://localhost:${PORT}  │`);
   console.log('  ╰──────────────────────────────────────────╯');
   console.log('');

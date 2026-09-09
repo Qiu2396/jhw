@@ -1,17 +1,25 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
 import SearchBar from './components/SearchBar.vue';
 import ResultCard from './components/ResultCard.vue';
-import PlayerModal from './components/PlayerModal.vue';
-import SourcesView from './components/SourcesView.vue';
-import MusicView from './components/MusicView.vue';
-import NovelView from './components/NovelView.vue';
 import MiniPlayer from './components/MiniPlayer.vue';
 import AppIcon from './components/AppIcon.vue';
 import { useMusicPlayer } from './musicStore.js';
 import { search, getSources } from './api.js';
 
-const view = ref('home');          // home | result | sites
+// 各频道视图按需加载（路由级代码分割）：首屏只带核心搜索/播放条，
+// 其余功能（含 hls.js 等大依赖）进入对应频道时才拉取对应 chunk
+const PlayerModal = defineAsyncComponent(() => import('./components/PlayerModal.vue'));
+const SourcesView = defineAsyncComponent(() => import('./components/SourcesView.vue'));
+const MusicView = defineAsyncComponent(() => import('./components/MusicView.vue'));
+const NovelView = defineAsyncComponent(() => import('./components/NovelView.vue'));
+const AudiobookView = defineAsyncComponent(() => import('./components/AudiobookView.vue'));
+const ComicView = defineAsyncComponent(() => import('./components/ComicView.vue'));
+const ResourceView = defineAsyncComponent(() => import('./components/ResourceView.vue'));
+const ToolsView = defineAsyncComponent(() => import('./components/ToolsView.vue'));
+const ResumeEditor = defineAsyncComponent(() => import('./components/ResumeEditor.vue'));
+
+const view = ref('home');          // home | result | sites | audio | comic | tools
 const kw = ref('');
 const searching = ref(false);
 const searchError = ref('');
@@ -194,6 +202,26 @@ function goNovel() {
   location.hash = '#/novel';
 }
 
+function goAudio() {
+  view.value = 'audio';
+  location.hash = '#/audio';
+}
+
+function goComic() {
+  view.value = 'comic';
+  location.hash = '#/comic';
+}
+
+function goTools() {
+  view.value = 'tools';
+  location.hash = '#/tools';
+}
+
+function goResource() {
+  view.value = 'resource';
+  location.hash = '#/resource';
+}
+
 function openPlayer(group, resume = null) {
   resumeItem.value = resume;
   activeGroup.value = group;
@@ -230,6 +258,9 @@ function removeHistory(h) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value));
 }
 
+// 切换频道时回到页面顶部，避免新频道停留在上一页的滚动位置
+watch(view, () => window.scrollTo({ top: 0 }));
+
 function parseHash() {
   const h = decodeURIComponent(location.hash || '');
   if (h.startsWith('#/search/')) {
@@ -242,6 +273,16 @@ function parseHash() {
     view.value = 'music';
   } else if (h === '#/novel') {
     view.value = 'novel';
+  } else if (h === '#/audio') {
+    view.value = 'audio';
+  } else if (h === '#/comic') {
+    view.value = 'comic';
+  } else if (h === '#/tools') {
+    view.value = 'tools';
+  } else if (h === '#/resource') {
+    view.value = 'resource';
+  } else if (h === '#/resume') {
+    view.value = 'resume';
   } else if (h === '' || h === '#/') {
     view.value = 'home';
   }
@@ -268,16 +309,20 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
     <div class="container topbar-inner">
       <div class="logo" @click="goHome">
         <span class="logo-icon"><AppIcon name="play" :size="14" /></span>
-        <span class="logo-text">聚搜影视</span>
-        <span class="logo-sub">免费视频聚合导航</span>
+        <span class="logo-text">聚搜王</span>
+        <span class="logo-sub">影视 · 音乐 · 书 · 漫画 · 资源</span>
       </div>
       <div class="topbar-search">
         <SearchBar v-if="view !== 'home'" :initial="kw" :compact="true" @search="doSearch" />
       </div>
       <nav class="topnav">
-        <button :class="{ active: view !== 'sites' && view !== 'music' && view !== 'novel' }" @click="goHome">首页</button>
+        <button :class="{ active: !['sites','music','novel','audio','comic','tools','resource'].includes(view) }" @click="goHome">首页</button>
         <button :class="{ active: view === 'music' }" @click="goMusic">音乐</button>
         <button :class="{ active: view === 'novel' }" @click="goNovel">小说</button>
+        <button :class="{ active: view === 'audio' }" @click="goAudio">听书</button>
+        <button :class="{ active: view === 'comic' }" @click="goComic">漫画</button>
+        <button :class="{ active: view === 'resource' }" @click="goResource">资源</button>
+        <button :class="{ active: view === 'tools' }" @click="goTools">工具</button>
         <button :class="{ active: view === 'sites' }" @click="goSites">站点目录</button>
         <button
           class="theme-btn"
@@ -292,7 +337,7 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
     <!-- 首页 -->
     <div v-if="view === 'home'" class="home">
       <section class="hero">
-        <h1>一部作品，<span class="grad">哪里能看</span>，一搜便知</h1>
+        <h1>想看的、想听的、想读的，<span class="grad">一搜便知</span></h1>
         <p class="hero-sub">慢下来 · 找一部想看的剧，听一首想听的歌，读完一段没读完的故事</p>
         <div class="hero-search">
           <SearchBar :initial="kw" @search="doSearch" />
@@ -351,8 +396,8 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
         </div>
         <div class="feature">
           <div class="feature-icon"><AppIcon name="headphones" :size="26" /></div>
-          <h3>听歌 · 阅读</h3>
-          <p>治愈歌单免费听，小说全本慢慢读。音乐挂在底部，切页不打断，边听边看。</p>
+          <h3>听歌 · 听书 · 阅读 · 漫画</h3>
+          <p>治愈歌单免费听，有声小说自动连播，小说漫画随手读。都挂在底部播放条，切页不打断。</p>
         </div>
       </section>
     </div>
@@ -421,14 +466,29 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
     <!-- 小说频道 -->
     <NovelView v-else-if="view === 'novel'" />
 
+    <!-- 听书频道 -->
+    <AudiobookView v-else-if="view === 'audio'" />
+
+    <!-- 漫画频道 -->
+    <ComicView v-else-if="view === 'comic'" />
+
+    <!-- 小工具 -->
+    <ToolsView v-else-if="view === 'tools'" />
+
+    <!-- 全文资源搜索 -->
+    <ResourceView v-else-if="view === 'resource'" />
+
+    <!-- 在线简历 -->
+    <ResumeEditor v-else-if="view === 'resume'" />
+
     <!-- 站点目录 -->
     <SourcesView v-else :sources="sources" :nav-sites="navSites" />
   </main>
 
   <footer class="footer" :class="{ 'with-player': musicQueue.length }">
     <div class="container">
-      <p>本工具仅聚合公开搜索接口与链接，不存储、不上传任何视频文件。视频内容均来自第三方站点。</p>
-      <p>请在观看时支持正版平台 · 如内容涉及侵权请联系相应站点删除</p>
+      <p>本工具仅聚合公开搜索接口与链接，不存储、不上传任何文件。内容均来自第三方站点。</p>
+      <p>请在观影、听歌、阅读时支持正版平台 · 如内容涉及侵权请联系相应站点删除</p>
       <p class="footer-wish">愿每个夜晚都有剧可追、有歌可听、有故事可读 ☾</p>
     </div>
   </footer>
@@ -676,7 +736,7 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
-  gap: 18px;
+  gap: 16px;
 }
 
 .footer {
@@ -693,7 +753,13 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
 
 @media (max-width: 720px) {
   .logo-sub { display: none; }
-  .topbar-search { max-width: none; }
+  .topbar-inner { flex-wrap: wrap; height: auto; padding: 8px 0; row-gap: 6px; }
+  /* 窄屏两行布局：logo+搜索+主题 一行，导航横向滚动一行 */
+  .topbar-search { order: 1; flex: 1 1 auto; max-width: none; }
+  .theme-btn { order: 2; }
+  .topnav { order: 3; width: 100%; margin-left: 0; overflow-x: auto; scrollbar-width: none; }
+  .topnav::-webkit-scrollbar { display: none; }
+  .topnav button { flex: 0 0 auto; padding: 7px 10px; font-size: 13px; }
   .hero h1 { font-size: 26px; }
   .hero { padding-top: 56px; }
   .container { padding: 0 16px; }

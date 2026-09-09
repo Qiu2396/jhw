@@ -29,7 +29,7 @@ function submit() {
     <input
       v-model="word"
       type="text"
-      placeholder="输入片名，如：凡人修仙传"
+      placeholder="搜索片名 / 书名 / 歌名 / 资源"
       maxlength="60"
     />
     <button type="submit" class="go">搜索</button>

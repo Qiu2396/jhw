@@ -5,12 +5,13 @@
  */
 import { ref, computed, watch, nextTick } from 'vue';
 import { useMusicPlayer } from '../musicStore.js';
+import PelicanRider from './PelicanRider.vue';
 import AppIcon from './AppIcon.vue';
 
 const {
   queue, currentIdx, playing, buffering, error,
   currentTime, duration, bufferedEnd, volume, mode,
-  lyricLines, lyricIdx, cover, currentSong,
+  lyricLines, lyricIdx, currentSong,
   toggle, jump, playAt, seek, setVolume, cycleMode, removeAt, clearQueue
 } = useMusicPlayer();
 
@@ -92,9 +93,9 @@ function togglePanel(tab) {
       <div class="mini-inner">
         <!-- 左：封面 + 信息 -->
         <div class="m-left">
-          <div class="disc" :class="{ spin: playing }">
-            <img v-if="cover" :src="cover" alt="" @error="cover = ''" />
-            <AppIcon v-else name="music" :size="20" class="disc-note" />
+          <!-- 唱片位常驻鹈鹕骑车：播放时蹬车前进，暂停时定格 -->
+          <div class="disc">
+            <PelicanRider :size="36" :paused="!playing" />
           </div>
           <div class="m-meta">
             <div class="m-name" :title="currentSong?.name">{{ currentSong?.name }}</div>
@@ -237,11 +238,8 @@ function togglePanel(tab) {
   background: linear-gradient(135deg, var(--cover-1), var(--cover-2));
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-1);
+  color: var(--gold);
 }
-.disc img { width: 100%; height: 100%; object-fit: cover; }
-.disc-note { color: var(--gold); }
-.disc.spin img, .disc.spin .disc-note { animation: mp-rotate 14s linear infinite; }
-@keyframes mp-rotate { to { transform: rotate(360deg); } }
 
 /* 正在播放的均衡器小动画 */
 .eq {

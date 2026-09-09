@@ -31,6 +31,7 @@ const currentSong = computed(() => queue.value[currentIdx.value] || null);
 let audio = null;
 let loadSeq = 0;                  // 防止并发加载互相覆盖
 let consecutiveFails = 0;         // 连续解析/播放失败次数（歌单自动跳歌用，超限停下）
+let resolveRetryUsed = false;     // 懒解析条目（听书）直链失效后，重解析只自动试一次
 const baseTitle = typeof document !== 'undefined' ? document.title : '';
 
 function ensureAudio() {
@@ -44,13 +45,14 @@ function ensureAudio() {
     try { bufferedEnd.value = audio.buffered.end(audio.buffered.length - 1) || 0; } catch { /* ignore */ }
   });
   audio.addEventListener('playing', () => {
-    playing.value = true; buffering.value = false; consecutiveFails = 0; updateTitle();
+    playing.value = true; buffering.value = false; consecutiveFails = 0; resolveRetryUsed = false; updateTitle();
   });
   audio.addEventListener('pause', () => { playing.value = false; updateTitle(); });
   audio.addEventListener('ended', onEnded);
   audio.addEventListener('error', () => {
-    if (audio.src) onFail(new Error('音源加载失败，已自动跳到下一首'));
+    if (audio.src) onFail(new Error('音源加载失败，已自动跳到下一首'), true);
   });
+  if (typeof window !== 'undefined') window.__fvAudio = audio;   // 诊断用（同 __vueErrs 惯例）
   return audio;
 }
 
@@ -96,9 +98,31 @@ function targetIndex(step) {
   return next >= 0 && next < n ? next : -1;
 }
 
-function onFail(e) {
+function onFail(e, fromAudio = false) {
   buffering.value = false;
   error.value = e.message || '播放失败';
+  // 听书直链会过期（token 10 分钟 / 音频服务器迁移）：媒体加载失败先重解析当前集，
+  // 只自动重试一次（成功续播后 resolveRetryUsed 在 playing 事件复位）；再失败走跳下一集
+  const cur = queue.value[currentIdx.value];
+  if (fromAudio && !resolveRetryUsed && cur && typeof cur.resolve === 'function') {
+    resolveRetryUsed = true;
+    const seqAtRetry = loadSeq;
+    cur.resolve().then(re => {
+      if (seqAtRetry !== loadSeq || !re?.url) return skipCurrent();
+      queue.value[currentIdx.value] = { ...cur, ...re, resolve: cur.resolve };
+      const a = ensureAudio();
+      error.value = '';
+      buffering.value = true;
+      a.src = re.url;
+      a.play().catch(() => {});
+    }).catch(() => skipCurrent());
+    return;
+  }
+  skipCurrent();
+}
+
+/** 原有逻辑：自动跳下一集（连续失败太多次就停） */
+function skipCurrent() {
   consecutiveFails++;
   // 歌单场景自动跳过坏歌；连续失败太多次（比如断网）就停
   if (queue.value.length > 1 && consecutiveFails < 4) {
@@ -111,8 +135,16 @@ function onFail(e) {
   }
 }
 
-/** 推荐歌单条目没有 songId，播放前按「歌名 + 歌手」搜索解析 */
+/** 推荐歌单条目没有 songId，播放前按「歌名 + 歌手」搜索解析；
+ *  听书条目带 resolve()，播到该集时才解析真实音频地址（整本书可提前入队）。
+ *  解析后 resolve 保留在条目上：直链过期时（error 事件）还能再次解析续播 */
 async function resolveSong(song) {
+  if (song.url) return song;
+  if (typeof song.resolve === 'function') {
+    const r = await song.resolve();
+    if (!r || !r.url) throw new Error(song.resolveError || '该集音频解析失败，已自动跳到下一集');
+    return { ...song, ...r, resolve: song.resolve };
+  }
   if (song.songId) return song;
   const kw = song.artist ? `${song.name} ${song.artist}` : song.name;
   const d = await searchMusic(kw, 10);
@@ -146,6 +178,7 @@ async function loadCurrent(autoplay = true) {
   if (!song) return;
   const a = ensureAudio();
   const seq = ++loadSeq;
+  resolveRetryUsed = false;
   error.value = '';
   buffering.value = true;
   lyricLines.value = [];
@@ -158,6 +191,14 @@ async function loadCurrent(autoplay = true) {
     if (seq !== loadSeq) return;
     queue.value[currentIdx.value] = resolved;
     updateTitle();
+    // 直链条目（听书章节）：直接播，不走歌曲解析/歌词/封面
+    if (resolved.url) {
+      cover.value = resolved.cover || '';
+      a.src = resolved.url;
+      if (autoplay) await a.play().catch(() => {});
+      updateMediaSession(resolved);
+      return;
+    }
     const [u, l, pic] = await Promise.allSettled([
       musicUrl(resolved.songId, 320000),
       musicLyric(resolved.songId),

@@ -87,6 +87,33 @@ export const novelToc = (src, url) =>
 export const novelChapter = (src, url) =>
   getJSON(`/api/novel/chapter?src=${encodeURIComponent(src)}&url=${encodeURIComponent(url)}&_=${Date.now()}`);
 
+/* ---- 听书（有声小说） ---- */
+
+export const audiobookSearch = (kw) =>
+  getJSON(`/api/audiobook/search?kw=${encodeURIComponent(kw)}&_=${Date.now()}`);
+
+export const audiobookBook = (src, url) =>
+  getJSON(`/api/audiobook/book?src=${encodeURIComponent(src)}&url=${encodeURIComponent(url)}&_=${Date.now()}`);
+
+export const audiobookPlay = (src, url) =>
+  getJSON(`/api/audiobook/play?src=${encodeURIComponent(src)}&url=${encodeURIComponent(url)}&_=${Date.now()}`);
+
+/* ---- 漫画 ---- */
+
+export const comicSearch = (kw) =>
+  getJSON(`/api/comic/search?kw=${encodeURIComponent(kw)}&_=${Date.now()}`);
+
+export const comicBook = (src, url) =>
+  getJSON(`/api/comic/book?src=${encodeURIComponent(src)}&url=${encodeURIComponent(url)}&_=${Date.now()}`);
+
+export const comicImages = (src, url) =>
+  getJSON(`/api/comic/images?src=${encodeURIComponent(src)}&url=${encodeURIComponent(url)}&_=${Date.now()}`);
+
+/* ---- 全文资源搜索 ---- */
+
+export const resourceSearch = (kw) =>
+  getJSON(`/api/resource/search?kw=${encodeURIComponent(kw)}&_=${Date.now()}`);
+
 /* ---- 电台音乐 ---- */
 
 export const popularRadio = () => getJSON(`/api/radio/popular?_=${Date.now()}`);
