@@ -404,6 +404,11 @@ function cycleMode() {
   mode.value = { order: 'loop', loop: 'one', one: 'shuffle', shuffle: 'order' }[mode.value];
 }
 
+/** 直接设置播放模式（随机发现「今天听点什么」用） */
+function setMode(m) {
+  if (['order', 'loop', 'one', 'shuffle'].includes(m)) mode.value = m;
+}
+
 function removeAt(i) {
   if (i < 0 || i >= queue.value.length) return;
   const wasCurrent = i === currentIdx.value;
@@ -447,7 +452,7 @@ export function useMusicPlayer() {
     // 操作
     playList, playSong, addToQueue, toggle, jump, playAt, seek,
     setVolume, cycleMode, removeAt, clearQueue,
-    setRate, setSkip
+    setRate, setSkip, setMode
   };
 }
 

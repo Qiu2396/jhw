@@ -4,14 +4,14 @@
  * 播放本身在全局 musicStore + MiniPlayer（底部常驻条）里，
  * 所以切到小说页边看边听也不会断。
  */
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { searchMusic } from '../api.js';
 import { useMusicPlayer } from '../musicStore.js';
 import { peekList, loadKind, removeEntry, clearKind, takePendingResume } from '../historyStore.js';
 import AppIcon from './AppIcon.vue';
 
 // 解构出来用：普通对象里嵌套的 ref 在模板中不会自动解包
-const { playList, playSong, addToQueue, currentSong } = useMusicPlayer();
+const { playList, playSong, addToQueue, currentSong, setMode, mode } = useMusicPlayer();
 
 // ---- 最近听过（登录同步云端，游客存本机） ----
 const musicHistory = peekList('music');
@@ -25,6 +25,24 @@ const kw = ref('');
 const loading = ref(false);
 const error = ref('');
 const songs = ref([]);
+
+/* ---- 今天随机听点什么：以日期为种子，同一天固定、隔天自动换 ---- */
+const rerollPick = ref(null);
+const rerolled = ref(0);
+const shownPick = computed(() => rerolled.value ? rerollPick.value : PLAYLISTS[daySeed() % PLAYLISTS.length]);
+function daySeed() {
+  const d = new Date();
+  let h = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  h = (h * 9301 + 49297) % 233280;
+  return h;
+}
+function playDaily(reroll = false) {
+  const pl = reroll ? PLAYLISTS[Math.floor(Math.random() * PLAYLISTS.length)] : shownPick.value;
+  if (reroll) { rerollPick.value = pl; rerolled.value++; }
+  setMode('shuffle');
+  const start = Math.floor(Math.random() * pl.songs.length);
+  playList(pl.songs, start);
+}
 
 // 推荐歌单：只需歌名 + 歌手，播放时在线解析音源（见 musicStore.resolveSong）
 const PLAYLISTS = [
@@ -111,6 +129,113 @@ const PLAYLISTS = [
       { name: '时间煮雨', artist: '郁可唯' },
       { name: '凉凉', artist: '张碧晨' }
     ]
+  },
+  {
+    id: 'minyao', icon: 'leaf', title: '民谣与诗', desc: '木吉他一响，故事就有了画面',
+    songs: [
+      { name: '董小姐', artist: '宋冬野' },
+      { name: '安河桥', artist: '宋冬野' },
+      { name: '理想', artist: '赵雷' },
+      { name: '少年锦时', artist: '赵雷' },
+      { name: '理想三旬', artist: '陈鸿宇' },
+      { name: '云烟成雨', artist: '房东的猫' },
+      { name: '美好事物', artist: '房东的猫' },
+      { name: '平凡之路', artist: '朴树' },
+      { name: '生如夏花', artist: '朴树' }
+    ]
+  },
+  {
+    id: 'cantopop', icon: 'music', title: '港乐时光', desc: '粤语金曲，一开口就是年代感',
+    songs: [
+      { name: '红豆', artist: '王菲' },
+      { name: '约定', artist: '王菲' },
+      { name: '十年', artist: '陈奕迅' },
+      { name: '富士山下', artist: '陈奕迅' },
+      { name: '浮夸', artist: '陈奕迅' },
+      { name: '一生所爱', artist: '卢冠廷' },
+      { name: '沉默是金', artist: '张国荣' },
+      { name: '风继续吹', artist: '张国荣' },
+      { name: '讲不出再见', artist: '谭咏麟' },
+      { name: '一起走过的日子', artist: '刘德华' }
+    ]
+  },
+  {
+    id: 'west', icon: 'star-full', title: '欧美经典', desc: '旋律一响就是回忆杀',
+    songs: [
+      { name: 'Yesterday Once More', artist: 'Carpenters' },
+      { name: 'My Love', artist: 'Westlife' },
+      { name: 'As Long As You Love Me', artist: 'Backstreet Boys' },
+      { name: 'Pretty Boy', artist: 'M2M' },
+      { name: 'Big Big World', artist: 'Emilia' },
+      { name: 'Lemon Tree', artist: "Fool's Garden" },
+      { name: 'Dying in the Sun', artist: 'The Cranberries' },
+      { name: 'Far Away From Home', artist: 'Groove Coverage' }
+    ]
+  },
+  {
+    id: 'jay', icon: 'music', title: 'Jay 时光机', desc: '从《简单爱》到《告白气球》',
+    songs: [
+      { name: '稻香', artist: '周杰伦' },
+      { name: '青花瓷', artist: '周杰伦' },
+      { name: '简单爱', artist: '周杰伦' },
+      { name: '安静', artist: '周杰伦' },
+      { name: '彩虹', artist: '周杰伦' },
+      { name: '告白气球', artist: '周杰伦' },
+      { name: '搁浅', artist: '周杰伦' },
+      { name: '夜曲', artist: '周杰伦' }
+    ]
+  },
+  {
+    id: 'mayday', icon: 'flame', title: '五月天青春', desc: '青春万岁，倔强万岁',
+    songs: [
+      { name: '倔强', artist: '五月天' },
+      { name: '突然好想你', artist: '五月天' },
+      { name: '恋爱ing', artist: '五月天' },
+      { name: '干杯', artist: '五月天' },
+      { name: '你不是真正的快乐', artist: '五月天' },
+      { name: '后来的我们', artist: '五月天' },
+      { name: '星空', artist: '五月天' },
+      { name: '转眼', artist: '五月天' }
+    ]
+  },
+  {
+    id: 'citynight', icon: 'moon', title: '城市夜行', desc: '晚风、路灯和耳机里的歌',
+    songs: [
+      { name: '演员', artist: '薛之谦' },
+      { name: '丑八怪', artist: '薛之谦' },
+      { name: '像我这样的人', artist: '毛不易' },
+      { name: '默', artist: '那英' },
+      { name: '匆匆那年', artist: '王菲' },
+      { name: '光年之外', artist: '邓紫棋' },
+      { name: '体面', artist: '于文文' },
+      { name: '麻雀', artist: '薛之谦' }
+    ]
+  },
+  {
+    id: 'guofeng', icon: 'clapperboard', title: '国风古韵', desc: '戏腔一起，山河入画',
+    songs: [
+      { name: '大鱼', artist: '周深' },
+      { name: '赤伶', artist: 'HITA' },
+      { name: '牵丝戏', artist: '银临' },
+      { name: '锦鲤抄', artist: '银临' },
+      { name: '红昭愿', artist: '音阙诗听' },
+      { name: '山外小楼夜听雨', artist: '任然' },
+      { name: '燕无歇', artist: '蒋雪儿' },
+      { name: '芒种', artist: '音阙诗听' }
+    ]
+  },
+  {
+    id: 'hot', icon: 'flame', title: '热歌现场', desc: '最近大街小巷都在放的',
+    songs: [
+      { name: '起风了', artist: '买辣椒也用券' },
+      { name: '世间美好与你环环相扣', artist: '柏松' },
+      { name: '你的答案', artist: '阿冗' },
+      { name: '少年', artist: '梦然' },
+      { name: '白月光与朱砂痣', artist: '大籽' },
+      { name: '飞鸟和蝉', artist: '任然' },
+      { name: '可可托海的牧羊人', artist: '王琪' },
+      { name: '浪子闲话', artist: '花僮' }
+    ]
   }
 ];
 
@@ -153,6 +278,19 @@ onMounted(async () => {
       累了就戴上耳机。搜歌名或歌手（如：成都 / 周杰伦），免费音源即刻播放。
       <span class="tip">切到「小说」等页面音乐也不会断，边看边听 🎧</span>
     </p>
+
+    <!-- 今天随机听点什么 -->
+    <div class="daily">
+      <div class="daily-icon">🎲</div>
+      <div class="daily-body">
+        <div class="daily-title">今天随机听点什么？</div>
+        <div class="daily-sub">今日每日歌单：<b>{{ shownPick.title }}</b> · {{ shownPick.songs.length }} 首随机播放<span v-if="!rerolled" class="dim">（明天自动换一批）</span></div>
+      </div>
+      <div class="daily-ops">
+        <button class="btn small primary" @click="playDaily(false)">开始播放</button>
+        <button class="btn small" @click="playDaily(true)">换一批</button>
+      </div>
+    </div>
 
     <!-- 推荐歌单 -->
     <h3 class="blk-title">为你准备的歌单</h3>
@@ -235,6 +373,24 @@ h2 { margin: 0 0 6px; }
 .page-desc .tip { color: var(--gold); }
 
 .blk-title { font-size: 16px; margin: 26px 0 12px; }
+
+/* ---- 今天随机听点什么 ---- */
+.daily {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: linear-gradient(135deg, var(--gold-soft), transparent 70%), var(--surface);
+  border: 1px solid rgba(242, 185, 75, 0.35);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 8px;
+}
+.daily-icon { font-size: 34px; line-height: 1; }
+.daily-body { flex: 1; min-width: 180px; }
+.daily-title { font-size: 16px; font-weight: 700; }
+.daily-sub { font-size: 12.5px; color: var(--text-dim); margin-top: 4px; }
+.daily-ops { display: flex; gap: 8px; flex-shrink: 0; }
 
 /* ---- 推荐歌单卡片 ---- */
 .pl-grid {
