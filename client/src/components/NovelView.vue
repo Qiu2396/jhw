@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onUnmounted, onMounted } from 'vue';
+import { ref, reactive, computed, onUnmounted, onMounted, watch } from 'vue';
 import { novelSearch, novelToc, novelChapter } from '../api.js';
 import { peekList, loadKind, removeEntry, record, clearKind, takePendingResume } from '../historyStore.js';
 import AppIcon from './AppIcon.vue';
@@ -23,7 +23,45 @@ const chapterIdx = ref(0);
 const chapter = ref(null);          // {title, content}
 const chLoading = ref(false);
 const chError = ref('');
-const fontSize = ref(parseInt(localStorage.getItem('nv_font') || '18'));
+
+/* ---- 阅读器排版设置：字号 / 行距 / 背景 / 字体（本机记忆） ---- */
+const READER_THEMES = [
+  { id: 'paper', name: '羊皮纸', bg: '#f4ecd9', fg: '#5b4a36' },
+  { id: 'white', name: '纸白', bg: '#ffffff', fg: '#333a45' },
+  { id: 'green', name: '护眼', bg: '#cce8cf', fg: '#2f4a33' },
+  { id: 'dark', name: '夜间', bg: '#161a22', fg: '#a8b0bd' }
+];
+const READER_FONTS = [
+  { id: 'default', name: '默认', stack: '' },
+  { id: 'song', name: '宋体', stack: '"Songti SC", SimSun, "Noto Serif SC", serif' },
+  { id: 'hei', name: '黑体', stack: '"PingFang SC", "Microsoft YaHei", sans-serif' }
+];
+const showRSet = ref(false);
+
+function loadReader() {
+  const base = { fontSize: 18, lineHeight: 1.8, theme: 'paper', font: 'default' };
+  try {
+    // 旧版本只记字号（nv_font），迁移进来
+    const legacy = parseInt(localStorage.getItem('nv_font'));
+    if (isFinite(legacy)) base.fontSize = legacy;
+    Object.assign(base, JSON.parse(localStorage.getItem('nv_reader') || '{}'));
+  } catch { /* 忽略坏数据 */ }
+  if (![14, 16, 18, 20, 22, 24, 28].includes(base.fontSize)) base.fontSize = Math.min(Math.max(base.fontSize, 14), 30);
+  return base;
+}
+const reader = reactive(loadReader());
+watch(reader, () => {
+  try { localStorage.setItem('nv_reader', JSON.stringify({ ...reader })); } catch { /* 忽略 */ }
+}, { deep: true });
+
+function setFs(d) {
+  reader.fontSize = Math.min(Math.max(reader.fontSize + d, 14), 30);
+}
+const readerStyle = computed(() => ({
+  fontSize: reader.fontSize + 'px',
+  lineHeight: reader.lineHeight,
+  fontFamily: READER_FONTS.find(f => f.id === reader.font)?.stack || undefined
+}));
 
 // ---- 个人阅读记录（登录同步云端，游客存本机） ----
 const novelHistory = peekList('novel');
@@ -156,11 +194,6 @@ function stepChapter(offset) {
   openChapter(next);
 }
 
-function setFont(delta) {
-  fontSize.value = Math.min(Math.max(fontSize.value + delta, 14), 28);
-  localStorage.setItem('nv_font', String(fontSize.value));
-}
-
 function progressInfo(b) {
   const p = loadProgress()[b.key];
   return p ? `读到 ${p.chapterName}` : '';
@@ -278,12 +311,53 @@ onMounted(async () => {
       <div class="reader-head">
         <button class="btn small" @click="stage = 'toc'"><AppIcon name="list" :size="13" /> 目录</button>
         <div class="reader-title dim">{{ chapter?.title || currentBook?.bookName }}</div>
-        <div class="font-ctrl">
-          <button class="btn small" @click="setFont(-2)">A-</button>
-          <button class="btn small" @click="setFont(2)">A+</button>
+        <button class="btn small" :class="{ primary: showRSet }" @click="showRSet = !showRSet">Aa 排版</button>
+      </div>
+
+      <!-- 阅读设置面板 -->
+      <div v-if="showRSet" class="rset">
+        <div class="rset-row">
+          <span class="rset-label">字号</span>
+          <div class="rset-ctrl">
+            <button class="btn small" @click="setFs(-2)">A-</button>
+            <span class="rset-val">{{ reader.fontSize }}px</span>
+            <button class="btn small" @click="setFs(2)">A+</button>
+          </div>
+        </div>
+        <div class="rset-row">
+          <span class="rset-label">行距</span>
+          <div class="rset-ctrl">
+            <button
+              v-for="lh in [1.5, 1.8, 2.1, 2.4]" :key="lh"
+              class="rset-chip" :class="{ on: reader.lineHeight === lh }"
+              @click="reader.lineHeight = lh"
+            >{{ lh }}</button>
+          </div>
+        </div>
+        <div class="rset-row">
+          <span class="rset-label">背景</span>
+          <div class="rset-ctrl">
+            <button
+              v-for="t in READER_THEMES" :key="t.id"
+              class="rset-swatch" :class="{ on: reader.theme === t.id }"
+              :style="{ background: t.bg, color: t.fg }"
+              @click="reader.theme = t.id"
+            >{{ t.name }}</button>
+          </div>
+        </div>
+        <div class="rset-row">
+          <span class="rset-label">字体</span>
+          <div class="rset-ctrl">
+            <button
+              v-for="f in READER_FONTS" :key="f.id"
+              class="rset-chip" :class="{ on: reader.font === f.id }"
+              @click="reader.font = f.id"
+            >{{ f.name }}</button>
+          </div>
         </div>
       </div>
-      <div class="reader">
+
+      <div class="reader" :class="'rt-' + reader.theme" :style="readerStyle">
         <div v-if="chLoading" class="n-center"><span class="spin"></span> 正在加载正文…</div>
         <div v-else-if="chError" class="n-error">
           {{ chError }}
@@ -294,7 +368,7 @@ onMounted(async () => {
         </div>
         <template v-else>
           <h3 class="reader-chapter">{{ chapter?.title }}</h3>
-          <div class="reader-content" :style="{ fontSize: fontSize + 'px' }">
+          <div class="reader-content">
             <p v-for="(p, i) in (chapter?.content || '').split('\n')" :key="i">{{ p }}</p>
           </div>
           <div class="reader-foot">
@@ -456,8 +530,8 @@ h2 { margin: 0 0 6px; }
 .reader-chapter { text-align: center; margin: 0 0 22px; font-size: 19px; }
 .reader-content p {
   margin: 0 0 1em;
-  line-height: 1.95;
-  color: var(--text);
+  line-height: inherit;
+  color: inherit;
   text-indent: 2em;
   transition: font-size 0.15s;
 }
@@ -469,6 +543,49 @@ h2 { margin: 0 0 6px; }
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
+
+/* ---- 阅读背景主题（覆盖 .reader 容器配色） ---- */
+.reader.rt-paper { background: #f4ecd9; color: #5b4a36; border-color: #e2d5b8; }
+.reader.rt-paper .reader-foot { border-top-color: #dcccaa; }
+.reader.rt-white { background: #ffffff; color: #333a45; border-color: var(--border); }
+.reader.rt-green { background: #cce8cf; color: #2f4a33; border-color: #b3d4b6; }
+.reader.rt-green .reader-foot { border-top-color: #b3d4b6; }
+.reader.rt-dark { background: #161a22; color: #a8b0bd; border-color: #2c3552; }
+.reader.rt-dark .reader-foot { border-top-color: #2c3552; }
+
+/* ---- 阅读设置面板 ---- */
+.rset {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow-1);
+}
+.rset-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rset-label { font-size: 13px; color: var(--text-dim); width: 40px; flex-shrink: 0; }
+.rset-ctrl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rset-val { font-size: 13px; color: var(--gold); min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
+.rset-chip {
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.rset-chip:hover { color: var(--text); }
+.rset-chip.on { color: var(--gold); border-color: rgba(242, 185, 75, 0.5); background: var(--gold-soft); font-weight: 600; }
+.rset-swatch {
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  border: 2px solid var(--border-strong);
+}
+.rset-swatch.on { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-soft); font-weight: 600; }
 
 /* ---- 移动端 H5 ---- */
 @media (max-width: 720px) {
