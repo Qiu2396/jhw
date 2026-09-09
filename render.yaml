@@ -1,0 +1,13 @@
+# Render 一键蓝图：https://render.com/docs/blueprint-spec
+# 免费实例：750 小时/月，15 分钟无访问自动休眠（首次唤醒约 30~60 秒）
+# 注意：免费实例磁盘是临时的，重启/重新部署后 SQLite 数据（源/账号/记录）会重置
+services:
+  - type: web
+    name: jusow
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production

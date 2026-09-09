@@ -1,5 +1,21 @@
-async function request(url, options) {
-  const res = await fetch(url, options);
+const TOKEN_KEY = 'fv_token';
+
+export function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
+}
+
+export function setToken(t) {
+  try {
+    if (t) localStorage.setItem(TOKEN_KEY, t);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch { /* 隐私模式等 */ }
+}
+
+async function request(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(url, { ...options, headers });
   let data;
   try {
     data = await res.json();
@@ -21,6 +37,28 @@ async function postJSON(url, body) {
     body: JSON.stringify(body || {})
   });
 }
+
+/* ---- 账号体系 ---- */
+
+export const apiRegister = (username, password) => postJSON('/api/auth/register', { username, password });
+
+export const apiLogin = (username, password) => postJSON('/api/auth/login', { username, password });
+
+export const apiLogout = () => postJSON('/api/auth/logout');
+
+export const apiMe = () => getJSON('/api/auth/me');
+
+/* ---- 个人播放/阅读记录 ---- */
+
+export const getHistory = (kind) => getJSON(`/api/history?kind=${encodeURIComponent(kind)}&_=${Date.now()}`);
+
+export const putHistory = (entry) => postJSON('/api/history', entry);
+
+export const removeHistoryItem = (kind, key) =>
+  request(`/api/history/${encodeURIComponent(kind)}/${encodeURIComponent(key)}`, { method: 'DELETE' });
+
+export const clearHistoryKind = (kind) =>
+  request(`/api/history/${encodeURIComponent(kind)}`, { method: 'DELETE' });
 
 export const search = (kw, exclude) =>
   getJSON(`/api/search?kw=${encodeURIComponent(kw)}${exclude ? `&exclude=${encodeURIComponent(exclude)}` : ''}`);

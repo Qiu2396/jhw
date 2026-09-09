@@ -4,7 +4,13 @@ import SearchBar from './components/SearchBar.vue';
 import ResultCard from './components/ResultCard.vue';
 import MiniPlayer from './components/MiniPlayer.vue';
 import AppIcon from './components/AppIcon.vue';
+import AuthModal from './components/AuthModal.vue';
 import { useMusicPlayer } from './musicStore.js';
+import { useAuth, initAuth } from './authStore.js';
+import {
+  peekList, loadKind, record, removeEntry, clearKind,
+  resetHistoryCache, setPendingResume, KIND_LABEL
+} from './historyStore.js';
 import { search, getSources } from './api.js';
 
 // 各频道视图按需加载（路由级代码分割）：首屏只带核心搜索/播放条，
@@ -51,10 +57,12 @@ const sources = ref([]);
 const activeGroup = ref(null);     // 打开播放弹窗的聚合条目
 const resumeItem = ref(null);      // 从「继续观看」进入的条目 {sourceId, episodeUrl}
 
-const HISTORY_KEY = 'fv_history';
+// ---- 账号体系（可选登录，游客也能用全部功能） ----
+const { user, ready, showAuth, openAuth, doLogout } = useAuth();
+const userMenuOpen = ref(false);
+
 const FAV_KEY = 'fv_favorites';
 const DISABLED_KEY = 'fv_disabled_sources';
-const history = ref([]);
 const favorites = ref([]);
 
 const typeFilter = ref('全部');
@@ -126,32 +134,45 @@ function removeFav(f) {
   localStorage.setItem(FAV_KEY, JSON.stringify(favorites.value));
 }
 
-function loadHistory() {
-  try { history.value = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
-  catch { history.value = []; }
+// ---- 「继续观看」：统一走个人记录存储（登录→云端，游客→本机） ----
+const videoList = peekList('video');
+// 记录条目为 {kind,key,title,subtitle,cover,ts,payload}，播放器相关字段都在 payload 里
+const history = computed(() => videoList.value.map(e => ({ ...(e.payload || {}), ts: e.ts })));
+
+function videoEntry(item) {
+  return {
+    kind: 'video',
+    key: `${item.key}|${item.episodeUrl}`,
+    title: item.title,
+    subtitle: item.episodeName || '',
+    cover: item.cover || '',
+    payload: { ...item }
+  };
 }
 
 function saveHistory(item) {
-  const old = history.value.find(h => h.key === item.key && h.episodeUrl === item.episodeUrl);
-  const progress = item.progress !== undefined ? item.progress : (old?.progress || 0);
-  const list = history.value.filter(h => !(h.key === item.key && h.episodeUrl === item.episodeUrl));
-  list.unshift({ ...item, progress, ts: Date.now() });
-  history.value = list.slice(0, 12);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value));
+  record(videoEntry(item));
 }
 
 function saveProgress(item) {
   // 只更新进度，不改变排序位置
-  const h = history.value.find(x => x.key === item.key && x.episodeUrl === item.episodeUrl);
-  if (h) {
-    h.progress = item.progress;
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value));
-  }
+  record(videoEntry(item), { keepPos: true });
 }
 
 function clearHistory() {
-  history.value = [];
-  localStorage.removeItem(HISTORY_KEY);
+  clearKind('video');
+}
+
+/** 老版本 fv_history（纯本机）迁移到统一记录，仅游客且未初始化过时执行一次 */
+function migrateOldVideoHistory() {
+  try {
+    if (user.value || localStorage.getItem('fv_hist_video')) return;
+    const old = JSON.parse(localStorage.getItem('fv_history') || '[]');
+    if (!Array.isArray(old)) return;
+    for (const it of old) {
+      record({ ...videoEntry(it), ts: it.ts || Date.now() }, { keepPos: true });
+    }
+  } catch { /* 忽略坏数据 */ }
 }
 
 function disabledList() {
@@ -254,9 +275,35 @@ function resumeFav(f) {
 }
 
 function removeHistory(h) {
-  history.value = history.value.filter(x => x !== h);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value));
+  removeEntry('video', `${h.key}|${h.episodeUrl}`);
 }
+
+// ---- 首页「继续听 · 继续读」：听书/小说/漫画/音乐记录合并，点击跨页直连续播 ----
+const continueAll = computed(() => {
+  const out = [];
+  for (const k of ['audiobook', 'novel', 'comic', 'music']) {
+    for (const e of peekList(k).value) out.push(e);
+  }
+  return out.sort((a, b) => b.ts - a.ts).slice(0, 12);
+});
+
+function resumeAny(e) {
+  setPendingResume(e);
+  if (e.kind === 'audiobook') goAudio();
+  else if (e.kind === 'novel') goNovel();
+  else if (e.kind === 'comic') goComic();
+  else if (e.kind === 'music') goMusic();
+}
+
+async function reloadHistories() {
+  resetHistoryCache();
+  userMenuOpen.value = false;
+  await loadKind('video');
+  for (const k of ['audiobook', 'novel', 'comic', 'music']) loadKind(k);
+}
+
+// 登录/登出后：记录列表切换数据源（云端 ↔ 本机）
+watch(user, () => { reloadHistories(); });
 
 // 切换频道时回到页面顶部，避免新频道停留在上一页的滚动位置
 watch(view, () => window.scrollTo({ top: 0 }));
@@ -289,7 +336,10 @@ function parseHash() {
 }
 
 onMounted(async () => {
-  loadHistory();
+  await initAuth();
+  migrateOldVideoHistory();
+  await loadKind('video');
+  for (const k of ['audiobook', 'novel', 'comic', 'music']) loadKind(k);
   loadFavorites();
   try {
     const data = await getSources();
@@ -312,24 +362,48 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
         <span class="logo-text">聚搜王</span>
         <span class="logo-sub">影视 · 音乐 · 书 · 漫画 · 资源</span>
       </div>
-      <div class="topbar-search">
-        <SearchBar v-if="view !== 'home'" :initial="kw" :compact="true" @search="doSearch" />
+      <div v-if="view !== 'home'" class="topbar-search">
+        <SearchBar :initial="kw" :compact="true" @search="doSearch" />
       </div>
-      <nav class="topnav">
-        <button :class="{ active: !['sites','music','novel','audio','comic','tools','resource'].includes(view) }" @click="goHome">首页</button>
-        <button :class="{ active: view === 'music' }" @click="goMusic">音乐</button>
-        <button :class="{ active: view === 'novel' }" @click="goNovel">小说</button>
-        <button :class="{ active: view === 'audio' }" @click="goAudio">听书</button>
-        <button :class="{ active: view === 'comic' }" @click="goComic">漫画</button>
-        <button :class="{ active: view === 'resource' }" @click="goResource">资源</button>
-        <button :class="{ active: view === 'tools' }" @click="goTools">工具</button>
-        <button :class="{ active: view === 'sites' }" @click="goSites">站点目录</button>
+      <!-- 导航行：桌面整体靠右；移动端独占一行，导航横向滚动、用户/主题钉在行尾 -->
+      <div class="nav-row">
+        <nav class="topnav">
+          <button :class="{ active: !['sites','music','novel','audio','comic','tools','resource'].includes(view) }" @click="goHome">首页</button>
+          <button :class="{ active: view === 'music' }" @click="goMusic">音乐</button>
+          <button :class="{ active: view === 'novel' }" @click="goNovel">小说</button>
+          <button :class="{ active: view === 'audio' }" @click="goAudio">听书</button>
+          <button :class="{ active: view === 'comic' }" @click="goComic">漫画</button>
+          <button :class="{ active: view === 'resource' }" @click="goResource">资源</button>
+          <button :class="{ active: view === 'tools' }" @click="goTools">工具</button>
+          <button :class="{ active: view === 'sites' }" @click="goSites">站点目录</button>
+        </nav>
+
+        <!-- 用户区：游客可登录（可选），已登录显示身份 -->
+        <div v-if="ready" class="user-area">
+          <button v-if="!user" class="login-btn" @click="openAuth()">
+            <AppIcon name="user" :size="14" /> 登录
+          </button>
+          <div v-else class="user-wrap">
+            <button class="user-btn" @click="userMenuOpen = !userMenuOpen">
+              <AppIcon name="user" :size="14" />
+              <span class="user-name">{{ user.username }}</span>
+              <span v-if="user.isAdmin" class="badge gold">超管</span>
+            </button>
+            <Transition name="mp-panel">
+              <div v-if="userMenuOpen" class="user-menu">
+                <div class="um-head dim">{{ user.isAdmin ? '超级管理员' : '已登录' }} · 记录云端同步</div>
+                <button class="um-item" @click="userMenuOpen = false; doLogout()">退出登录</button>
+              </div>
+            </Transition>
+          </div>
+        </div>
+
         <button
           class="theme-btn"
           :title="theme === 'dark' ? '切换到日间模式' : '切换到夜间模式'"
           @click="toggleTheme"
         ><AppIcon :name="theme === 'dark' ? 'sun' : 'moon'" :size="17" /></button>
-      </nav>
+      </div>
     </div>
   </header>
 
@@ -363,6 +437,27 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
             <button class="history-del fav-del" title="取消收藏" @click.stop="removeFav(f)"><AppIcon name="x" :size="12" /></button>
           </div>
         </div>
+      </section>
+
+      <!-- 继续听 · 继续读：听书/小说/漫画/音乐个人记录，点击直接续 -->
+      <section v-if="continueAll.length" class="section">
+        <div class="section-head">
+          <h2 class="sec-h"><AppIcon name="history" :size="17" class="sec-ic" /> 继续听 · 继续读</h2>
+        </div>
+        <div class="history-row">
+          <div v-for="e in continueAll" :key="e.kind + '-' + e.key" class="history-card" @click="resumeAny(e)">
+            <img v-if="e.cover" :src="e.cover" loading="lazy" @error="e2 => e2.target.style.display = 'none'" />
+            <div v-else class="cover-fallback">{{ (e.title || "").slice(0, 1) }}</div>
+            <div class="history-info">
+              <div class="history-title">{{ e.title }}</div>
+              <div class="history-ep">
+                <span class="kind-badge" :class="'k-' + e.kind">{{ KIND_LABEL[e.kind] }}</span>
+                {{ e.subtitle }}
+              </div>
+            </div>
+          </div>
+        </div>
+        <p v-if="!user" class="guest-tip dim">游客记录保存在本机 · <button class="link-btn" @click="openAuth('登录后记录云端同步，换设备也能继续')">登录同步到云端</button></p>
       </section>
 
       <section v-if="history.length" class="section">
@@ -493,6 +588,9 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
     </div>
   </footer>
 
+  <!-- 登录 / 注册弹窗（可选，游客直接用） -->
+  <AuthModal />
+
   <!-- 全局迷你播放器：不随页面切换卸载，音乐不断 -->
   <MiniPlayer />
 
@@ -546,7 +644,8 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
 .sec-h { display: flex; align-items: center; gap: 8px; }
 .sec-ic { color: var(--gold); }
 .topbar-search { flex: 1; max-width: 480px; }
-.topnav { display: flex; gap: 4px; margin-left: auto; }
+.nav-row { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
+.topnav { display: flex; gap: 4px; }
 .topnav button {
   padding: 7px 15px;
   border-radius: 9px;
@@ -554,11 +653,88 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
   font-size: 14px;
   line-height: 1.4;
   user-select: none;
+  white-space: nowrap;
   transition: all 0.15s;
 }
 .topnav button:hover { color: var(--text); background: var(--hover); }
 .topnav button.active { color: var(--gold); background: var(--gold-soft); }
 .theme-btn { font-size: 16px; line-height: 1; }
+
+/* ---- 用户区 ---- */
+.user-area { position: relative; flex-shrink: 0; }
+.login-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--on-gold);
+  background: linear-gradient(135deg, var(--gold), var(--gold-2));
+  box-shadow: var(--shadow-gold);
+  white-space: nowrap;
+}
+.login-btn:hover { filter: brightness(1.06); }
+.user-wrap { position: relative; }
+.user-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  white-space: nowrap;
+}
+.user-btn:hover { color: var(--gold); border-color: rgba(242, 185, 75, 0.45); }
+.user-name { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 190px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  z-index: 70;
+}
+.um-head { padding: 10px 14px; font-size: 12px; border-bottom: 1px solid var(--border); }
+.um-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.um-item:hover { color: var(--red); background: rgba(255, 107, 107, 0.06); }
+
+/* ---- 首页继续听/读 ---- */
+.kind-badge {
+  display: inline-block;
+  padding: 0 6px;
+  height: 16px;
+  line-height: 16px;
+  margin-right: 2px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.kind-badge.k-audiobook { background: var(--gold-soft); color: var(--gold); }
+.kind-badge.k-novel { background: rgba(90, 168, 255, 0.12); color: var(--blue); }
+.kind-badge.k-comic { background: rgba(52, 209, 137, 0.12); color: var(--green); }
+.kind-badge.k-music { background: rgba(226, 149, 42, 0.14); color: var(--gold-2); }
+.guest-tip { font-size: 12px; margin: 8px 2px 0; }
+.link-btn { color: var(--gold); font-size: 12px; padding: 0; }
+.link-btn:hover { text-decoration: underline; }
 
 .main { flex: 1; padding-bottom: 70px; }
 .main.has-player { padding-bottom: 130px; }
@@ -753,15 +929,29 @@ onUnmounted(() => window.removeEventListener('hashchange', parseHash));
 
 @media (max-width: 720px) {
   .logo-sub { display: none; }
-  .topbar-inner { flex-wrap: wrap; height: auto; padding: 8px 0; row-gap: 6px; }
-  /* 窄屏两行布局：logo+搜索+主题 一行，导航横向滚动一行 */
-  .topbar-search { order: 1; flex: 1 1 auto; max-width: none; }
-  .theme-btn { order: 2; }
-  .topnav { order: 3; width: 100%; margin-left: 0; overflow-x: auto; scrollbar-width: none; }
+  .topbar-inner { flex-wrap: wrap; height: auto; padding: 8px 0; gap: 10px; row-gap: 6px; }
+  /* 窄屏结构性两行：第一行 logo+搜索；第二行 导航(横向滚动)+用户+主题（钉在行尾，
+     登录态再宽也不换行、不被滚走） */
+  .topbar-search { order: 1; flex: 1 1 100px; max-width: none; min-width: 0; }
+  .nav-row { order: 2; width: 100%; margin-left: 0; gap: 8px; }
+  .topnav {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
   .topnav::-webkit-scrollbar { display: none; }
   .topnav button { flex: 0 0 auto; padding: 7px 10px; font-size: 13px; }
+  .user-area { flex-shrink: 0; }
+  .theme-btn { flex-shrink: 0; }
+  .user-name { display: none; }
+  .user-btn { padding: 0 10px; gap: 4px; }
+  .login-btn { padding: 0 11px; }
   .hero h1 { font-size: 26px; }
   .hero { padding-top: 56px; }
   .container { padding: 0 16px; }
+  .history-card { flex: 0 0 168px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .section { padding: 0 16px; }
 }
 </style>

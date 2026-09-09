@@ -74,6 +74,14 @@ html[data-theme='light'] {
 
 * { box-sizing: border-box; }
 
+/* 移动端 H5：去掉点按高亮、禁止横向溢出
+   （用 clip 而非 hidden：hidden 会创建滚动容器，破坏顶栏 sticky 吸顶） */
+html {
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: clip;
+}
+body { overflow-x: clip; }
+
 html, body {
   margin: 0;
   padding: 0;

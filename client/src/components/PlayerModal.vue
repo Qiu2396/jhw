@@ -462,4 +462,11 @@ onUnmounted(() => {
   .list-side { max-height: 320px; }
   .mask { padding: 10px; }
 }
+@media (max-width: 560px) {
+  .mask { padding: 0; align-items: flex-end; }
+  .modal { max-height: 96vh; max-width: none; border-radius: 16px 16px 0 0; padding: 14px; }
+  .now-playing { display: none; }
+  .ctrl-bar { flex-wrap: wrap; }
+  .rates { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+}
 </style>

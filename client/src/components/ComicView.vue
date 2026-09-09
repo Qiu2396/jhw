@@ -4,11 +4,15 @@
  * 搜索 → 章节列表 → 阅读器（竖屏滚动看图），进度自动记忆。
  * 图片由后端代理解析出直链，前端 <img lazy> 直接渲染。
  */
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { comicSearch, comicBook, comicImages } from '../api.js';
+import { peekList, loadKind, removeEntry, record, clearKind, takePendingResume } from '../historyStore.js';
 import AppIcon from './AppIcon.vue';
 
 const PROGRESS_KEY = 'cv_progress';
+
+// ---- 个人漫画阅读记录（登录同步云端，游客存本机） ----
+const comicHistory = peekList('comic');
 
 // 三态：search 搜索列表 / chapters 章节列表 / reader 阅读器
 const stage = ref('search');
@@ -46,6 +50,43 @@ function saveProgress(entry) {
   all[entry.key] = { idx: entry.idx, url: entry.url, name: entry.name, srcId: entry.srcId, ts: Date.now() };
   localStorage.setItem(PROGRESS_KEY, JSON.stringify(all));
 }
+
+/** 看到一话：本地进度徽章 + 记录列表（含续看所需全部信息）一起更新 */
+function recordReading(comic, srcId, idx, url, name) {
+  saveProgress({ key: comic.key, idx, url, name, srcId });
+  record({
+    kind: 'comic',
+    key: comic.key,
+    title: comic.name,
+    subtitle: name,
+    cover: comic.cover || '',
+    payload: {
+      name: comic.name,
+      author: comic.author || '',
+      cover: comic.cover || '',
+      status: comic.status || '',
+      key: comic.key,
+      sources: comic.sources,
+      srcId,
+      chapterIdx: idx,
+      chapterUrl: url,
+      chapterName: name
+    }
+  });
+}
+
+/** 从记录直接续看：打开对应源并跳到上次那话 */
+async function resumeComic(e) {
+  const p = e.payload || {};
+  if (!p.sources?.length) return;
+  const comic = { name: p.name, author: p.author, cover: p.cover, status: p.status, key: p.key || e.key, sources: p.sources };
+  const srcIdx = Math.max(p.sources.findIndex(s => s.sourceId === p.srcId), 0);
+  const finalIdx = await openComic(comic, srcIdx);
+  if (finalIdx < 0) return;
+  const idx = chapters.value.findIndex(c => c.url === p.chapterUrl);
+  if (idx >= 0) openChapter(idx);
+  else if (p.chapterIdx >= 0 && p.chapterIdx < chapters.value.length) openChapter(p.chapterIdx);
+}
 function progressInfo(c) {
   const p = loadProgress()[c.key];
   return p ? `读到 ${p.name}` : '';
@@ -68,7 +109,7 @@ async function doSearch() {
 }
 
 async function openComic(c, sourceIdx = 0) {
-  if (bookLoading.value) return;    // 防连点重复请求
+  if (bookLoading.value) return -1;    // 防连点重复请求
   currentComic.value = { ...c };
   chapters.value = [];
   chFilter.value = '';
@@ -80,9 +121,11 @@ async function openComic(c, sourceIdx = 0) {
     const d = await comicBook(src.sourceId, src.bookUrl);
     chapters.value = d.chapters || [];
     currentComic.value = { ...c, ...d, sources: c.sources, activeSource: sourceIdx };
+    return sourceIdx;
   } catch (e) {
     if (c.sources.length > sourceIdx + 1) return openComic(c, sourceIdx + 1);
     bookError.value = e.message;
+    return -1;
   } finally {
     bookLoading.value = false;
   }
@@ -117,13 +160,7 @@ async function openChapter(idx) {
     images.value = d.images || [];
     if (!images.value.length) throw new Error('本话没有解析到图片');
     loading.value = false;
-    saveProgress({
-      key: currentComic.value.key,
-      idx,
-      url,
-      name: chapters.value[idx].name,
-      srcId: src.sourceId
-    });
+    recordReading(currentComic.value, src.sourceId, idx, url, chapters.value[idx].name);
   } catch (e) {
     loading.value = false;
     chError.value = e.message;
@@ -156,6 +193,17 @@ function stepChapter(offset) {
   if (next < 0 || next >= chapters.value.length) return;
   openChapter(next);
 }
+
+function clearAll() {
+  if (confirm('确定清空全部漫画阅读记录？')) clearKind('comic');
+}
+
+onMounted(async () => {
+  await loadKind('comic');
+  // 从首页「继续看」跳转过来：直接续看
+  const pendingEntry = takePendingResume('comic');
+  if (pendingEntry) resumeComic(pendingEntry);
+});
 </script>
 
 <template>
@@ -171,6 +219,26 @@ function stepChapter(offset) {
           <span v-if="searching" class="spin"></span> 搜索
         </button>
       </form>
+
+      <!-- 继续看：个人漫画记录，点击直接跳回上次那话 -->
+      <section v-if="comicHistory.length" class="rec-sec">
+        <div class="rec-head">
+          <h3 class="blk-title"><AppIcon name="history" :size="16" /> 继续看</h3>
+          <button class="btn small" @click="clearAll">清空记录</button>
+        </div>
+        <div class="rec-row">
+          <div v-for="e in comicHistory" :key="e.key" class="rec-card" @click="resumeComic(e)">
+            <img v-if="e.cover" :src="e.cover" loading="lazy" @error="e2 => e2.target.style.display = 'none'" />
+            <div v-else class="rec-cover">{{ (e.title || '').slice(0, 1) }}</div>
+            <div class="rec-info">
+              <div class="rec-title">{{ e.title }}</div>
+              <div class="rec-sub">{{ e.subtitle || '点击继续阅读' }}</div>
+            </div>
+            <button class="rec-del" title="删除这条记录" @click.stop="removeEntry('comic', e.key)"><AppIcon name="x" :size="12" /></button>
+          </div>
+        </div>
+      </section>
+
       <p v-if="searchError" class="c-error">⚠ {{ searchError }}</p>
       <p v-if="!searching && !searchError && !comics.length" class="dim c-empty">找一部想看的漫画，一口气看完 📚</p>
       <div v-if="comics.length" class="c-grid">
@@ -293,6 +361,51 @@ h2 { margin: 0 0 6px; }
 .page-h { display: flex; align-items: center; gap: 9px; }
 .h-icon { color: var(--gold); }
 .page-desc { color: var(--text-dim); margin: 0 0 24px; font-size: 14px; }
+
+/* ---- 继续看记录区（与听书/小说同款） ---- */
+.rec-sec { margin: 0 0 26px; }
+.rec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.blk-title { display: flex; align-items: center; gap: 7px; font-size: 15px; margin: 0; color: var(--gold); }
+.rec-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; }
+.rec-card {
+  position: relative;
+  flex: 0 0 220px;
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.rec-card:hover { border-color: rgba(242, 185, 75, 0.45); transform: translateY(-2px); }
+.rec-card img, .rec-cover {
+  width: 42px; height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--cover-1), var(--cover-2));
+}
+.rec-cover {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--gold); font-size: 18px; font-weight: 700;
+}
+.rec-info { min-width: 0; flex: 1; }
+.rec-title { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-sub { font-size: 12px; color: var(--text-faint); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-del {
+  position: absolute; top: 4px; right: 5px;
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px;
+  border-radius: 6px;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.rec-card:hover .rec-del { opacity: 1; }
+.rec-del:hover { color: var(--red); }
 .c-search { display: flex; gap: 10px; margin-bottom: 22px; align-items: center; }
 .c-search input {
   flex: 1; max-width: 460px;
@@ -444,5 +557,16 @@ h2 { margin: 0 0 6px; }
   justify-content: space-between;
   max-width: 820px;
   margin: 16px auto 0;
+}
+
+/* ---- 移动端 H5 ---- */
+@media (max-width: 720px) {
+  .comic { padding-top: 22px; }
+  .c-search input { font-size: 16px; }   /* ≥16px 防 iOS 聚焦自动放大 */
+  .c-cover.big { width: 84px; height: 112px; }
+  .c-chapters { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
+  .c-reader { padding: 6px; }
+  .rec-card { flex: 0 0 180px; }
+  .reader-foot .btn { padding: 0 12px; }
 }
 </style>

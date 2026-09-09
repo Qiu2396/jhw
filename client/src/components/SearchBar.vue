@@ -84,4 +84,12 @@ input::placeholder { color: var(--text-faint); }
 }
 .compact .go { height: 34px; padding: 0 16px; font-size: 13px; border-radius: 8px; box-shadow: none; }
 .compact input { font-size: 14px; }
+
+/* 移动端：字号≥16px 防 iOS 聚焦自动放大，按钮更紧凑 */
+@media (max-width: 720px) {
+  input { font-size: 16px; }
+  .compact input { font-size: 16px; }
+  .go { padding: 0 16px; height: 38px; }
+  .compact .go { height: 32px; padding: 0 12px; }
+}
 </style>

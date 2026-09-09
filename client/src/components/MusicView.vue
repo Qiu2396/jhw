@@ -1,16 +1,25 @@
 <script setup>
 /**
- * 音乐频道：只负责「选歌」——推荐歌单 + 搜索。
+ * 音乐频道：只负责「选歌」——推荐歌单 + 搜索 + 最近听过。
  * 播放本身在全局 musicStore + MiniPlayer（底部常驻条）里，
  * 所以切到小说页边看边听也不会断。
  */
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { searchMusic } from '../api.js';
 import { useMusicPlayer } from '../musicStore.js';
+import { peekList, loadKind, removeEntry, clearKind, takePendingResume } from '../historyStore.js';
 import AppIcon from './AppIcon.vue';
 
 // 解构出来用：普通对象里嵌套的 ref 在模板中不会自动解包
-const { playList, addToQueue, currentSong } = useMusicPlayer();
+const { playList, playSong, addToQueue, currentSong } = useMusicPlayer();
+
+// ---- 最近听过（登录同步云端，游客存本机） ----
+const musicHistory = peekList('music');
+
+function playFromHistory(e) {
+  const p = e.payload || {};
+  playSong({ name: p.name || e.title, artist: p.artist || '', album: p.album || '', songId: p.songId || undefined, cover: e.cover || '' });
+}
 
 const kw = ref('');
 const loading = ref(false);
@@ -124,6 +133,17 @@ async function doSearch() {
     loading.value = false;
   }
 }
+
+function clearAll() {
+  if (confirm('确定清空全部听歌记录？')) clearKind('music');
+}
+
+onMounted(async () => {
+  await loadKind('music');
+  // 从首页「继续听」跳转过来：直接播放
+  const pendingEntry = takePendingResume('music');
+  if (pendingEntry) playFromHistory(pendingEntry);
+});
 </script>
 
 <template>
@@ -159,6 +179,26 @@ async function doSearch() {
     </form>
 
     <p v-if="error" class="m-error">⚠ {{ error }}</p>
+
+    <!-- 最近听过 -->
+    <section v-if="musicHistory.length" class="hist-sec">
+      <div class="hist-head">
+        <h3 class="blk-title hist-title"><AppIcon name="history" :size="16" /> 最近听过</h3>
+        <button class="btn small" @click="clearAll">清空记录</button>
+      </div>
+      <div class="hist-list">
+        <div v-for="e in musicHistory" :key="e.key" class="hist-row" @click="playFromHistory(e)">
+          <img v-if="e.cover" :src="e.cover" loading="lazy" class="hist-cover" @error="e2 => e2.target.style.visibility = 'hidden'" />
+          <div v-else class="hist-cover fb"><AppIcon name="music" :size="16" /></div>
+          <div class="hist-info">
+            <div class="hist-name">{{ e.title }}</div>
+            <div class="hist-artist dim">{{ e.subtitle || '未知歌手' }}</div>
+          </div>
+          <span class="hist-go"><AppIcon name="play" :size="12" /></span>
+          <button class="hist-del" title="删除" @click.stop="removeEntry('music', e.key)"><AppIcon name="x" :size="12" /></button>
+        </div>
+      </div>
+    </section>
 
     <div v-if="songs.length" class="m-list">
       <div class="m-list-head">
@@ -308,10 +348,61 @@ h2 { margin: 0 0 6px; }
 .m-add:hover { color: var(--gold); background: var(--gold-soft); }
 .m-empty { text-align: center; padding: 50px 0; }
 
+/* ---- 最近听过 ---- */
+.hist-sec { margin-bottom: 26px; }
+.hist-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.hist-title { margin: 0; }
+.hist-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.hist-row:last-child { border-bottom: none; }
+.hist-row:hover { background: var(--hover); }
+.hist-cover {
+  width: 38px; height: 38px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--cover-1), var(--cover-2));
+}
+.hist-cover.fb { display: flex; align-items: center; justify-content: center; color: var(--gold); }
+.hist-info { flex: 1; min-width: 0; }
+.hist-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-artist { font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-go {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--gold-soft);
+  color: var(--gold);
+  flex-shrink: 0;
+}
+.hist-del {
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.hist-del:hover { color: var(--red); background: rgba(255, 107, 107, 0.08); }
+
 @media (max-width: 720px) {
   .m-album { display: none; }
   .m-name { width: 48%; }
   .m-artist { width: 30%; }
   .pl-grid { grid-template-columns: 1fr; }
+  .music { padding-top: 22px; }
+  .m-search input { font-size: 16px; }   /* ≥16px 防 iOS 聚焦自动放大 */
 }
 </style>

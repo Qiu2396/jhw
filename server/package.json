@@ -11,7 +11,7 @@
     "scan": "node tools/scan-sources.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13"
   },
   "dependencies": {
     "@imgly/background-removal-node": "^1.4.5",

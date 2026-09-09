@@ -5,6 +5,8 @@
  *   sources  可搜索资源源（聚合搜索的数据源配置）
  *   settings 键值设置（AI 服务配置等）
  *   ai_logs  AI 操作记录（发现/更新网站的历史）
+ *   users / sessions     账号体系（注册用户与会话令牌）
+ *   histories            个人播放/阅读记录（按 kind 区分频道）
  *
  * 数据库文件：server/data/app.db（首次启动自动创建并灌入种子源）
  */
@@ -18,7 +20,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '../data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const db = new DatabaseSync(path.join(DATA_DIR, 'app.db'));
+// FV_DB_PATH 仅供测试隔离用（默认 data/app.db）
+const db = new DatabaseSync(process.env.FV_DB_PATH || path.join(DATA_DIR, 'app.db'));
 
 db.exec(`
   PRAGMA journal_mode = WAL;
@@ -51,6 +54,34 @@ db.exec(`
     summary TEXT DEFAULT '',
     detail  TEXT DEFAULT '[]',
     created_at INTEGER DEFAULT (unixepoch())
+  );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    username   TEXT UNIQUE NOT NULL,
+    pass_hash  TEXT NOT NULL,
+    is_admin   INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT (unixepoch())
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER DEFAULT (unixepoch())
+  );
+
+  CREATE TABLE IF NOT EXISTS histories (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    kind       TEXT NOT NULL,
+    item_key   TEXT NOT NULL,
+    title      TEXT DEFAULT '',
+    subtitle   TEXT DEFAULT '',
+    cover      TEXT DEFAULT '',
+    payload    TEXT DEFAULT '{}',
+    updated_at INTEGER DEFAULT (unixepoch()),
+    UNIQUE(user_id, kind, item_key)
   );
 `);
 
@@ -119,6 +150,79 @@ export function updateCheckResult(id, { status, ms, info }) {
      WHERE id = ?`
   ).run(status, ms, info || '', id);
   return getSource(id);
+}
+
+/* ---------------- users / sessions（账号体系） ---------------- */
+
+export function countUsers() {
+  return db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
+}
+
+export function getUserByUsername(username) {
+  return db.prepare('SELECT * FROM users WHERE username = ?').get(String(username));
+}
+
+export function getUserById(id) {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+}
+
+export function createUser({ username, passHash, isAdmin = false }) {
+  const r = db.prepare('INSERT INTO users (username, pass_hash, is_admin) VALUES (?, ?, ?)')
+    .run(username, passHash, isAdmin ? 1 : 0);
+  return getUserById(r.lastInsertRowid);
+}
+
+export function createSession(token, userId, expiresAtSec) {
+  // 顺手清掉该用户已过期的会话，防止表无限膨胀
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND expires_at < unixepoch()').run(userId);
+  db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expiresAtSec);
+}
+
+export function getSession(token) {
+  if (!token) return null;
+  const s = db.prepare('SELECT * FROM sessions WHERE token = ?').get(String(token));
+  if (!s || s.expires_at < Date.now() / 1000) return null;
+  return s;
+}
+
+export function deleteSession(token) {
+  db.prepare('DELETE FROM sessions WHERE token = ?').run(String(token));
+}
+
+/* ---------------- histories（个人播放/阅读记录） ---------------- */
+
+export function upsertHistory({ userId, kind, key, title = '', subtitle = '', cover = '', payload = {} }) {
+  db.prepare(
+    `INSERT INTO histories (user_id, kind, item_key, title, subtitle, cover, payload, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch())
+     ON CONFLICT(user_id, kind, item_key) DO UPDATE SET
+       title = excluded.title, subtitle = excluded.subtitle, cover = excluded.cover,
+       payload = excluded.payload, updated_at = excluded.updated_at`
+  ).run(userId, kind, String(key), String(title), String(subtitle), String(cover), JSON.stringify(payload || {}));
+}
+
+export function listHistories(userId, kind, limit = 60) {
+  return db.prepare(
+    'SELECT * FROM histories WHERE user_id = ? AND kind = ? ORDER BY updated_at DESC, id DESC LIMIT ?'
+  ).all(userId, String(kind), Math.min(Math.max(limit, 1), 100))
+    .map(r => {
+      let payload = {};
+      try { payload = JSON.parse(r.payload || '{}'); } catch { /* 忽略坏数据 */ }
+      return {
+        kind: r.kind, key: r.item_key, title: r.title, subtitle: r.subtitle,
+        cover: r.cover, payload, ts: r.updated_at * 1000
+      };
+    });
+}
+
+export function deleteHistory(userId, kind, key) {
+  return db.prepare('DELETE FROM histories WHERE user_id = ? AND kind = ? AND item_key = ?')
+    .run(userId, String(kind), String(key)).changes > 0;
+}
+
+export function clearHistories(userId, kind) {
+  return db.prepare('DELETE FROM histories WHERE user_id = ? AND kind = ?')
+    .run(userId, String(kind)).changes > 0;
 }
 
 /* ---------------- settings ---------------- */

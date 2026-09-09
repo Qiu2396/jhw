@@ -11,7 +11,7 @@ const props = defineProps({
 });
 
 // 实心图标（控制类按钮视觉更稳）
-const FILLED = new Set(['play', 'pause', 'skip-back', 'skip-forward', 'star-full']);
+const FILLED = new Set(['play', 'pause', 'skip-back', 'skip-forward', 'star-full', 'fast-forward']);
 
 const ICONS = {
   /* ---- 播放控制 ---- */
@@ -19,6 +19,9 @@ const ICONS = {
   pause: '<rect x="5" y="3" width="5" height="18" rx="1.2"/><rect x="14" y="3" width="5" height="18" rx="1.2"/>',
   'skip-back': '<polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>',
   'skip-forward': '<polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>',
+  'fast-forward': '<polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/>',
+  gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
   /* ---- 播放模式 ---- */
   'arrow-right': '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
   repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',

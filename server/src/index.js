@@ -6,8 +6,13 @@ import { NAV_SITES, HOT_KEYWORDS } from './sources.js';
 import { aggregateSearch, fetchDetail, probeSourceApi } from './aggregate.js';
 import {
   listSources, getSource, insertSource, updateSource, deleteSource,
-  updateCheckResult, listAiLogs
+  updateCheckResult, listAiLogs,
+  upsertHistory, listHistories, deleteHistory, clearHistories
 } from './db.js';
+import {
+  register, login, logout, toPublic, userForToken, tokenFromRequest,
+  requireAuth, requireAdmin, withAuthGuard
+} from './auth.js';
 import {
   getAiConfig, setAiConfig, aiDiscoverSources, aiAnalyzeHealth, aiTestConnection
 } from './ai.js';
@@ -72,7 +77,7 @@ app.get('/api/detail', async (req, res) => {
 
 /* ---------------- 源管理（SQLite） ---------------- */
 
-// 站点目录：数据库源 + 导航站 + 热门词
+// 站点目录：数据库源 + 导航站 + 热门词（公开读取，管理操作按角色限制）
 app.get('/api/sources', (_req, res) => {
   res.json({ sources: listSources(), navSites: NAV_SITES, hotKeywords: HOT_KEYWORDS });
 });
@@ -95,7 +100,7 @@ function validateSourcePayload(body) {
   };
 }
 
-// 新增源
+// 新增源：游客与登录用户都可以（不强制登录）；管理操作仅超级管理员
 app.post('/api/sources', (req, res) => {
   const v = validateSourcePayload(req.body || {});
   if (v.error) return res.status(400).json({ error: v.error });
@@ -112,8 +117,8 @@ app.post('/api/sources', (req, res) => {
   res.json(row);
 });
 
-// 修改源
-app.put('/api/sources/:id', (req, res) => {
+// 修改源（仅超级管理员）
+app.put('/api/sources/:id', requireAdmin, (req, res) => {
   if (!getSource(req.params.id)) return res.status(404).json({ error: '源不存在' });
   const v = validateSourcePayload({ ...req.body, api: req.body.api });
   if (v.error) return res.status(400).json({ error: v.error });
@@ -125,15 +130,15 @@ app.put('/api/sources/:id', (req, res) => {
   res.json(row);
 });
 
-// 删除源
-app.delete('/api/sources/:id', (req, res) => {
+// 删除源（仅超级管理员）
+app.delete('/api/sources/:id', requireAdmin, (req, res) => {
   const ok = deleteSource(req.params.id);
   if (!ok) return res.status(404).json({ error: '源不存在' });
   res.json({ ok: true });
 });
 
-// 检测源可用性并写库（id=all 检测全部）
-app.post('/api/sources/check', async (req, res) => {
+// 检测源可用性并写库（id=all 检测全部；仅超级管理员）
+app.post('/api/sources/check', requireAdmin, async (req, res) => {
   const target = String((req.body && req.body.id) || 'all');
   const ids = target === 'all' ? listSources().map(s => s.id) : [target];
   const results = [];
@@ -148,9 +153,9 @@ app.post('/api/sources/check', async (req, res) => {
   res.json({ results });
 });
 
-/* ---------------- AI 功能 ---------------- */
+/* ---------------- AI 功能（配置与操作仅超级管理员） ---------------- */
 
-app.get('/api/ai/config', (_req, res) => {
+app.get('/api/ai/config', requireAdmin, (_req, res) => {
   const cfg = getAiConfig();
   res.json({
     baseUrl: cfg.baseUrl,
@@ -160,7 +165,7 @@ app.get('/api/ai/config', (_req, res) => {
   });
 });
 
-app.post('/api/ai/config', (req, res) => {
+app.post('/api/ai/config', requireAdmin, (req, res) => {
   const { baseUrl, apiKey, model } = req.body || {};
   setAiConfig({ baseUrl, apiKey, model });
   res.json({ ok: true });
@@ -175,7 +180,7 @@ app.post('/api/ai/test', async (_req, res) => {
 });
 
 // AI 发现新源：LLM 推荐 → 逐个真实验证 → 可自动入库
-app.post('/api/ai/discover-sources', async (req, res) => {
+app.post('/api/ai/discover-sources', requireAdmin, async (req, res) => {
   const autoAdd = !req.body || req.body.autoAdd !== false;
   const count = Math.min(Math.max(parseInt(req.body?.count) || 8, 3), 12);
   try {
@@ -186,7 +191,7 @@ app.post('/api/ai/discover-sources', async (req, res) => {
 });
 
 // AI 体检分析
-app.post('/api/ai/analyze', async (_req, res) => {
+app.post('/api/ai/analyze', requireAdmin, async (_req, res) => {
   try {
     res.json(await aiAnalyzeHealth());
   } catch (e) {
@@ -194,8 +199,63 @@ app.post('/api/ai/analyze', async (_req, res) => {
   }
 });
 
-app.get('/api/ai/logs', (_req, res) => {
+app.get('/api/ai/logs', requireAdmin, (_req, res) => {
   res.json({ logs: listAiLogs(30) });
+});
+
+/* ---------------- 账号体系 ---------------- */
+
+app.post('/api/auth/register', withAuthGuard(req => register(req.body?.username, req.body?.password)));
+
+app.post('/api/auth/login', withAuthGuard(req => login(req.body?.username, req.body?.password)));
+
+app.post('/api/auth/logout', (req, res) => {
+  logout(tokenFromRequest(req));
+  res.json({ ok: true });
+});
+
+// 当前登录用户（未登录返回 user: null，前端据此恢复会话）
+app.get('/api/auth/me', (req, res) => {
+  const u = userForToken(tokenFromRequest(req));
+  res.json({ user: u ? toPublic(u) : null });
+});
+
+/* ---------------- 个人播放/阅读记录（需登录） ---------------- */
+
+const HISTORY_KINDS = ['video', 'music', 'audiobook', 'novel', 'comic'];
+
+app.get('/api/history', requireAuth, (req, res) => {
+  const kind = String(req.query.kind || '').trim();
+  if (!HISTORY_KINDS.includes(kind)) return res.status(400).json({ error: 'kind 不合法' });
+  res.json({ items: listHistories(req.user.id, kind, parseInt(req.query.limit) || 60) });
+});
+
+app.post('/api/history', requireAuth, (req, res) => {
+  const { kind, key, title, subtitle, cover, payload } = req.body || {};
+  if (!HISTORY_KINDS.includes(kind)) return res.status(400).json({ error: 'kind 不合法' });
+  if (key === undefined || key === null || String(key).trim() === '') {
+    return res.status(400).json({ error: '缺少 key' });
+  }
+  upsertHistory({
+    userId: req.user.id, kind,
+    key: String(key).slice(0, 300),
+    title: String(title || '').slice(0, 200),
+    subtitle: String(subtitle || '').slice(0, 200),
+    cover: String(cover || '').slice(0, 500),
+    payload: payload && typeof payload === 'object' ? payload : {}
+  });
+  res.json({ ok: true });
+});
+
+// 删除单条（注意先注册带 :key 的具体路由，再注册清空路由）
+app.delete('/api/history/:kind/:key', requireAuth, (req, res) => {
+  if (!HISTORY_KINDS.includes(req.params.kind)) return res.status(400).json({ error: 'kind 不合法' });
+  res.json({ ok: deleteHistory(req.user.id, req.params.kind, req.params.key) });
+});
+
+app.delete('/api/history/:kind', requireAuth, (req, res) => {
+  if (!HISTORY_KINDS.includes(req.params.kind)) return res.status(400).json({ error: 'kind 不合法' });
+  res.json({ ok: clearHistories(req.user.id, req.params.kind) });
 });
 
 /* ---------------- 音乐（免费听歌，GDStudio 聚合） ---------------- */

@@ -12,7 +12,9 @@ const {
   queue, currentIdx, playing, buffering, error,
   currentTime, duration, bufferedEnd, volume, mode,
   lyricLines, lyricIdx, currentSong,
-  toggle, jump, playAt, seek, setVolume, cycleMode, removeAt, clearQueue
+  rate, skipCfg, isAudiobook,
+  toggle, jump, playAt, seek, setVolume, cycleMode, removeAt, clearQueue,
+  setRate, setSkip
 } = useMusicPlayer();
 
 const MODE_META = {
@@ -23,7 +25,22 @@ const MODE_META = {
 };
 const modeMeta = computed(() => MODE_META[mode.value] || MODE_META.order);
 
-const panelTab = ref('');          // '' | 'queue' | 'lyric'
+const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+const HEAD_OPTS = [0, 5, 10, 15, 30, 60];      // 秒
+const TAIL_OPTS = [0, 10, 15, 30, 60, 90];
+
+// 上浮小面板：'' | 'rate' | 'skip'（与 queue/lyric 面板互斥）
+const panelTab = ref('');
+function togglePanel(tab) {
+  panelTab.value = panelTab.value === tab ? '' : tab;
+}
+function pickRate(r) {
+  setRate(r);
+  panelTab.value = '';
+}
+function pickSkip(head, tail) {
+  setSkip(head, tail);
+}
 const lyricsEl = ref(null);
 const barEl = ref(null);
 
@@ -75,10 +92,6 @@ watch(lyricIdx, async () => {
 });
 
 watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
-
-function togglePanel(tab) {
-  panelTab.value = panelTab.value === tab ? '' : tab;
-}
 </script>
 
 <template>
@@ -118,6 +131,18 @@ function togglePanel(tab) {
             <AppIcon v-else :name="playing ? 'pause' : 'play'" :size="18" />
           </button>
           <button class="ctrl" title="下一首" @click="jump(1)"><AppIcon name="skip-forward" :size="16" /></button>
+          <button
+            class="rate-btn"
+            :class="{ on: rate !== 1 }"
+            title="倍速播放"
+            @click="togglePanel('rate')"
+          >{{ rate }}x</button>
+          <button
+            class="ctrl"
+            :class="{ on: skipCfg.head > 0 || skipCfg.tail > 0 }"
+            title="跳过片头/片尾（听书）"
+            @click="togglePanel('skip')"
+          ><AppIcon name="fast-forward" :size="15" /></button>
         </div>
 
         <!-- 右：时间 / 音量 / 面板 / 关闭 -->
@@ -140,9 +165,53 @@ function togglePanel(tab) {
         </div>
       </div>
 
-      <!-- 上浮面板：歌词 / 播放列表 -->
+      <!-- 上浮面板：倍速 / 跳过片头片尾 / 歌词 / 播放列表 -->
       <Transition name="mp-panel">
-        <div v-if="panelTab" class="panel">
+        <div v-if="panelTab === 'rate'" class="panel small-panel">
+          <div class="sp-head">倍速播放</div>
+          <div class="opt-grid">
+            <button
+              v-for="r in RATES"
+              :key="r"
+              class="opt"
+              :class="{ on: rate === r }"
+              @click="pickRate(r)"
+            >{{ r }}x</button>
+          </div>
+        </div>
+      </Transition>
+      <Transition name="mp-panel">
+        <div v-if="panelTab === 'skip'" class="panel small-panel">
+          <div class="sp-head">跳过片头 / 片尾 <span class="dim sp-note">{{ isAudiobook ? '· 对当前听书生效' : '· 仅对听书生效' }}</span></div>
+          <div class="skip-row">
+            <span class="skip-label">片头</span>
+            <div class="opt-grid">
+              <button
+                v-for="s in HEAD_OPTS"
+                :key="'h' + s"
+                class="opt"
+                :class="{ on: skipCfg.head === s }"
+                @click="pickSkip(s, skipCfg.tail)"
+              >{{ s === 0 ? '不跳' : s + 's' }}</button>
+            </div>
+          </div>
+          <div class="skip-row">
+            <span class="skip-label">片尾</span>
+            <div class="opt-grid">
+              <button
+                v-for="s in TAIL_OPTS"
+                :key="'t' + s"
+                class="opt"
+                :class="{ on: skipCfg.tail === s }"
+                @click="pickSkip(skipCfg.head, s)"
+              >{{ s === 0 ? '不跳' : s + 's' }}</button>
+            </div>
+          </div>
+          <p class="dim sp-tip">片尾快播完时自动连播下一集；设置保存在本机，对所有听书生效。</p>
+        </div>
+      </Transition>
+      <Transition name="mp-panel">
+        <div v-if="panelTab === 'lyric' || panelTab === 'queue'" class="panel">
           <div v-if="panelTab === 'lyric'" class="lyrics" ref="lyricsEl">
             <p v-if="!lyricLines.length" class="lrc none">暂无歌词</p>
             <p
@@ -190,6 +259,7 @@ function togglePanel(tab) {
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 /* ---- 进度条 ---- */
@@ -325,6 +395,49 @@ function togglePanel(tab) {
   cursor: pointer;
 }
 
+/* ---- 倍速按钮 ---- */
+.rate-btn {
+  min-width: 40px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.15s;
+}
+.rate-btn:hover { color: var(--gold); border-color: rgba(242, 185, 75, 0.45); }
+.rate-btn.on { color: var(--gold); border-color: rgba(242, 185, 75, 0.5); background: var(--gold-soft); }
+
+/* ---- 倍速/跳过小面板 ---- */
+.small-panel { width: auto; min-width: 250px; max-width: min(420px, calc(100vw - 32px)); padding: 14px 16px; }
+.sp-head { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.sp-note { font-size: 12px; font-weight: 400; }
+.skip-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.skip-label { font-size: 12.5px; color: var(--text-dim); flex-shrink: 0; width: 32px; }
+.opt-grid { display: flex; gap: 6px; flex-wrap: wrap; }
+.opt {
+  min-width: 40px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  transition: all 0.14s;
+}
+.opt:hover { color: var(--text); border-color: var(--border-strong); }
+.opt.on { color: var(--gold); border-color: rgba(242, 185, 75, 0.5); background: var(--gold-soft); font-weight: 600; }
+.sp-tip { font-size: 11.5px; margin: 8px 0 0; line-height: 1.6; }
+
 /* ---- 上浮面板 ---- */
 .panel {
   position: absolute;
@@ -384,10 +497,17 @@ function togglePanel(tab) {
   .pill-txt { display: none; }
   .pill { padding: 0 8px; }
   .m-sub { max-width: 46vw; }
+  .m-center { gap: 5px; }
 }
 @media (max-width: 560px) {
-  .mini-inner { padding: 8px 12px; gap: 8px; }
+  .mini-inner { padding: 8px 10px; gap: 6px; }
   .disc { width: 38px; height: 38px; }
   .m-right { gap: 2px; }
+  .m-center { gap: 4px; }
+  .ctrl { width: 32px; height: 32px; }
+  .ctrl.play { width: 38px; height: 38px; }
+  .rate-btn { min-width: 34px; padding: 0 6px; font-size: 11px; }
+  .small-panel { right: 8px; left: auto; }
+  .skip-row { flex-wrap: wrap; }
 }
 </style>

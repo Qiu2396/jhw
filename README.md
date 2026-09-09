@@ -20,7 +20,8 @@
 - **结果筛选**：分类标签（动漫 / 电影 / 剧集 / 解说…）+ 排序切换 + 收藏功能
 - **继续观看**：播放记录自动保存在本机浏览器，首页一键续播
 - **站点目录**：可搜索源 + 正版免费导航站（B 站、腾讯视频、央视频等）
-- **纯本地**：SQLite 单文件数据库 + 浏览器 localStorage，无账号无上传
+- **账号体系（可选）**：不登录也能用全部功能；登录后听歌/听书/阅读记录云端同步，换设备一键续播。首个注册的账号自动成为超级管理员（可管理源与 AI），普通用户和游客可新增源
+- **移动端 H5**：手机浏览器打开即用，播放条 / 弹窗 / 顶栏均已适配
 
 ## 一键启动
 
@@ -34,7 +35,7 @@ bash start.sh
 
 首次运行会自动安装依赖并构建前端页面（需要联网，约 1 分钟），之后每次启动只需几秒。启动完成后浏览器自动打开 `http://localhost:3000`。
 
-> 前置条件：安装 [Node.js](https://nodejs.org) 18 或以上版本（LTS 即可），除此之外无需任何其他环境。
+> 前置条件：安装 [Node.js](https://nodejs.org) **22.13 或以上**版本（数据库用的是 Node 内置 `node:sqlite`，低版本跑不起来），除此之外无需任何其他环境。
 
 ## 手动启动（开发模式）
 
@@ -87,6 +88,33 @@ cd client && npm install && npm run dev
 
 **数据库文件在哪？**
 `server/data/app.db`（SQLite 单文件）。删除它重启服务即可恢复内置初始源。
+
+## 免费部署到公网
+
+本项目需要 Node 后端（代理解析 + SQLite），**纯静态托管（Gitee Pages / GitHub Pages）跑不起来**。仓库自带 `Dockerfile` 与 `render.yaml`，推荐用 [Render](https://render.com) 免费实例部署：
+
+**步骤（约 5 分钟）：**
+
+1. 把本仓库推送到 **GitHub**（Render 不支持 Gitee，可在 GitHub 建一个仓库后 `git push` 镜像过去；私有仓库即可）
+2. 注册/登录 [render.com](https://render.com) → **New + → Blueprint** → 选择刚推送的 GitHub 仓库 → Render 会读取 `render.yaml` 自动创建免费 Web Service → **Apply**
+3. 等待构建完成（首次约 5~10 分钟，前端构建 + 依赖安装），得到 `https://你的服务名.onrender.com`
+4. 打开网址 → 注册第一个账号（自动成为超级管理员）
+
+**免费实例的三个限制（重要）：**
+
+- **磁盘是临时的**：实例重启或重新部署后，SQLite 数据（源配置、账号、云端记录）会重置为初始状态；浏览器本地的记录不受影响
+- **会休眠**：15 分钟无访问自动休眠，再次访问需要 30~60 秒冷启动
+- **国内访问 `*.onrender.com` 速度不稳定**，高峰期可能打不开
+
+**备选平台**（同样的 `Dockerfile` 直接可用）：
+
+| 平台 | 免费额度 | 说明 |
+|------|---------|------|
+| [Koyeb](https://koyeb.com) | 1 个免费 Web 服务 | 支持 GitHub 导入，选 Docker 构建 |
+| [Back4App Containers](https://back4app.com) | 免费容器 | 支持 Docker，256MB 内存偏小 |
+| [Hugging Face Spaces](https://huggingface.co/spaces) | 免费 Docker Space | 需把 README.md 加上 Spaces front matter；国内访问不稳定 |
+
+**自备 VPS 时**：`docker build -t jusow . && docker run -d -p 3000:3000 -v jusow-data:/app/server/data jusow`，挂载卷后数据可持久化（免费容器平台做不到持久化）。
 
 ## 免责声明
 

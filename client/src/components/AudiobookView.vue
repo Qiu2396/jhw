@@ -7,15 +7,16 @@
  * 入队的每个章节带一个懒解析器 resolve()：播到该集时才向后端要真实音频地址，
  * 整本书上千集也能瞬间入队，不用提前逐集请求。
  */
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { audiobookSearch, audiobookBook, audiobookPlay } from '../api.js';
 import { useMusicPlayer } from '../musicStore.js';
+import { peekList, loadKind, removeEntry, record, clearKind, takePendingResume } from '../historyStore.js';
 import PelicanRider from './PelicanRider.vue';
 import AppIcon from './AppIcon.vue';
 
 const PROGRESS_KEY = 'ab_progress';
 
-const { playList, currentSong } = useMusicPlayer();
+const { playList, currentIdx, currentSong } = useMusicPlayer();
 
 // 两态：search 搜索列表 / book 章节列表
 const stage = ref('search');
@@ -62,6 +63,44 @@ function progressInfo(b) {
   return p ? `听到 ${p.name}` : '';
 }
 
+// ---- 个人听书记录（登录同步云端，游客存本机） ----
+const abHistory = peekList('audiobook');
+
+async function recordBookProgress(book, src, idx, url, name) {
+  saveProgress({ key: book.key, idx, url, name, srcId: src.sourceId });
+  record({
+    kind: 'audiobook',
+    key: book.key,
+    title: book.bookName,
+    subtitle: [book.broadcaster, name].filter(Boolean).join(' · '),
+    cover: book.cover || '',
+    payload: {
+      bookName: book.bookName,
+      author: book.author || '',
+      broadcaster: book.broadcaster || '',
+      cover: book.cover || '',
+      key: book.key,
+      sources: book.sources,
+      srcId: src.sourceId,
+      chapterIdx: idx,
+      chapterUrl: url,
+      chapterName: name
+    }
+  });
+}
+
+/** 从记录直接续播：打开对应源的章节列表并从上次那集开始播 */
+async function resumeEntry(e) {
+  const p = e.payload || {};
+  if (!p.sources?.length) return;
+  const srcIdx = Math.max(p.sources.findIndex(s => s.sourceId === p.srcId), 0);
+  openBook(
+    { key: p.key || e.key, bookName: p.bookName, author: p.author, broadcaster: p.broadcaster, cover: p.cover, sources: p.sources },
+    srcIdx,
+    Math.max(p.chapterIdx || 0, 0)
+  );
+}
+
 async function doSearch() {
   const w = kw.value.trim();
   if (!w || searching.value) return;
@@ -89,10 +128,11 @@ function buildQueue(book, src) {
       artist: [book.bookName, book.broadcaster].filter(Boolean).join(' · '),
       album: book.bookName,
       cover: book.cover || '',
+      kind: 'audiobook',
       _ch: i,
       resolveError: '本集音频获取失败，已自动跳到下一集',
       resolve: async () => {
-        saveProgress({ key: book.key, idx: i, url: c.url, name, srcId: src.sourceId });
+        recordBookProgress(book, src, i, c.url, name);
         if (playCache.has(c.url)) return playCache.get(c.url);
         const d = await audiobookPlay(src.sourceId, c.url);
         playCache.set(c.url, d);
@@ -142,6 +182,17 @@ function continueBook(b) {
   const srcIdx = p ? b.sources.findIndex(s => s.sourceId === p.srcId) : -1;
   openBook(b, srcIdx >= 0 ? srcIdx : 0, p ? p.idx : -1);
 }
+
+function clearAll() {
+  if (confirm('确定清空全部听书记录？')) clearKind('audiobook');
+}
+
+onMounted(async () => {
+  await loadKind('audiobook');
+  // 从首页「继续听」跳转过来：直接续播
+  const pendingEntry = takePendingResume('audiobook');
+  if (pendingEntry) resumeEntry(pendingEntry);
+});
 </script>
 
 <template>
@@ -161,6 +212,26 @@ function continueBook(b) {
           <span v-if="searching" class="spin"></span> 搜索
         </button>
       </form>
+
+      <!-- 继续听：个人听书记录，点击直接从上次那集接着播 -->
+      <section v-if="abHistory.length" class="rec-sec">
+        <div class="rec-head">
+          <h3 class="blk-title"><AppIcon name="history" :size="16" /> 继续听</h3>
+          <button class="btn small" @click="clearAll">清空记录</button>
+        </div>
+        <div class="rec-row">
+          <div v-for="e in abHistory" :key="e.key" class="rec-card" @click="resumeEntry(e)">
+            <img v-if="e.cover" :src="e.cover" loading="lazy" @error="e2 => e2.target.style.display = 'none'" />
+            <div v-else class="rec-cover">{{ (e.title || '').slice(0, 1) }}</div>
+            <div class="rec-info">
+              <div class="rec-title">{{ e.title }}</div>
+              <div class="rec-sub">{{ e.subtitle || '点击继续收听' }}</div>
+            </div>
+            <button class="rec-del" title="删除这条记录" @click.stop="removeEntry('audiobook', e.key)"><AppIcon name="x" :size="12" /></button>
+          </div>
+        </div>
+      </section>
+
       <p v-if="searchError" class="ab-error">⚠ {{ searchError }}</p>
       <p v-if="!searching && !searchError && !books.length" class="dim ab-empty">找一部想听的书，通勤路上不无聊 🎧</p>
       <div v-if="books.length" class="ab-list">
@@ -247,6 +318,52 @@ h2 { margin: 0 0 6px; }
 .page-h { display: flex; align-items: center; gap: 9px; }
 .h-icon { color: var(--gold); }
 .page-desc { color: var(--text-dim); margin: 0 0 24px; font-size: 14px; }
+
+/* ---- 继续听记录区 ---- */
+.rec-sec { margin: 0 0 26px; }
+.rec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.blk-title { display: flex; align-items: center; gap: 7px; font-size: 15px; margin: 0; color: var(--gold); }
+.rec-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; }
+.rec-card {
+  position: relative;
+  flex: 0 0 220px;
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.rec-card:hover { border-color: rgba(242, 185, 75, 0.45); transform: translateY(-2px); }
+.rec-card img, .rec-cover {
+  width: 42px; height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--cover-1), var(--cover-2));
+}
+.rec-cover {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--gold); font-size: 18px; font-weight: 700;
+}
+.rec-info { min-width: 0; flex: 1; }
+.rec-title { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-sub { font-size: 12px; color: var(--text-faint); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-del {
+  position: absolute; top: 4px; right: 5px;
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px;
+  border-radius: 6px;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.rec-card:hover .rec-del { opacity: 1; }
+.rec-del:hover { color: var(--red); }
+
 .ab-search { display: flex; gap: 10px; margin-bottom: 22px; align-items: center; }
 .ab-search input {
   flex: 1; max-width: 460px;
@@ -355,4 +472,17 @@ h2 { margin: 0 0 6px; }
 .eq i:nth-child(2) { height: 100%; animation-delay: 0.25s; }
 .eq i:nth-child(3) { height: 45%; animation-delay: 0.5s; }
 @keyframes ab-eq { 0%, 100% { transform: scaleY(0.45); } 50% { transform: scaleY(1); } }
+
+/* ---- 移动端 H5 ---- */
+@media (max-width: 720px) {
+  .ab { padding-top: 22px; }
+  .ab-search input { font-size: 16px; }   /* ≥16px 防 iOS 聚焦自动放大 */
+  .ab-book { flex-wrap: wrap; padding: 12px; }
+  .src-row { width: 100%; }
+  .ab-cover.big { width: 72px; height: 96px; }
+  .ab-book-head { gap: 12px; }
+  .ab-chapters { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
+  .rec-card { flex: 0 0 180px; }
+  .ab-book-intro { display: none; }
+}
 </style>

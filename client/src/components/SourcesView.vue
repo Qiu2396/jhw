@@ -1,10 +1,15 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import AppIcon from './AppIcon.vue';
+import { useAuth } from '../authStore.js';
 import {
   getSources, addSource, putSource, removeSource, checkSources,
   getAiConfig, saveAiConfig, testAiConnection, aiDiscoverSources, aiAnalyzeHealth, aiLogs
 } from '../api.js';
+
+const { user, openAuth } = useAuth();
+// 权限：超级管理员可管理源（编辑/删除/检测/AI）；游客和普通用户只能新增源
+const isAdmin = computed(() => !!user.value?.isAdmin);
 
 const sources = ref([]);
 const navSites = ref([]);
@@ -228,10 +233,13 @@ async function loadSources() {
 onMounted(async () => {
   try {
     await loadSources();
-    await loadAiCfg();
+    if (isAdmin.value) await loadAiCfg();   // AI 配置仅管理员可读
   } catch { /* 后端未就绪时静默 */ }
   loaded.value = true;
 });
+
+// 页面停留时登录了管理员账号 → 补拉 AI 配置
+watch(isAdmin, v => { if (v) loadAiCfg(); });
 
 const fmtTime = (sec) => sec ? new Date(sec * 1000).toLocaleString('zh-CN', { hour12: false }) : '从未检测';
 const statusLabel = (s) => {
@@ -247,28 +255,35 @@ const statusLabel = (s) => {
     <h2>站点目录</h2>
     <p class="page-desc">
       「可搜索源」供聚合搜索使用（存于本地 SQLite 数据库，可增删改）；「导航站点」为免费/正版平台直达链接。
-      AI 可自动发现并验证新源。
+      <span v-if="isAdmin">AI 可自动发现并验证新源。</span>
+    </p>
+    <p class="role-hint">
+      <template v-if="isAdmin"><span class="badge gold">超级管理员</span> 你可以新增、编辑、删除源，使用一键检测与 AI 功能。</template>
+      <template v-else-if="user"><span class="badge green">普通用户</span> 你可以新增源；编辑 / 删除 / 检测等管理操作仅超级管理员可用。</template>
+      <template v-else><span class="badge">游客身份</span> 你可以直接新增源、正常使用全部功能；无需登录，登录也不强制。</template>
     </p>
 
     <!-- 工具条 -->
     <div class="toolbar">
       <button class="btn" @click="openNew"><AppIcon name="plus" :size="14" /> 新增源</button>
-      <button class="btn" :disabled="checking" @click="checkAll">
-        <span v-if="checking" class="spin"></span> 一键检测
-      </button>
-      <span class="toolbar-sep"></span>
-      <button class="btn ai" :disabled="!!aiRunning" @click="runDiscover">
-        <span v-if="aiRunning === 'discover'" class="spin"></span> ✨ AI 发现新源
-      </button>
-      <button class="btn ai" :disabled="!!aiRunning" @click="runAnalyze">
-        <span v-if="aiRunning === 'analyze'" class="spin"></span> 🩺 AI 体检
-      </button>
-      <button class="btn" @click="loadLogs">AI 记录</button>
-      <span class="toolbar-sep"></span>
-      <button class="btn" @click="openAiCfg">
-        ⚙ AI 设置
-        <span class="badge" :class="aiCfg.hasKey ? 'green' : 'red'">{{ aiCfg.hasKey ? '已配置' : '未配置' }}</span>
-      </button>
+      <template v-if="isAdmin">
+        <button class="btn" :disabled="checking" @click="checkAll">
+          <span v-if="checking" class="spin"></span> 一键检测
+        </button>
+        <span class="toolbar-sep"></span>
+        <button class="btn ai" :disabled="!!aiRunning" @click="runDiscover">
+          <span v-if="aiRunning === 'discover'" class="spin"></span> ✨ AI 发现新源
+        </button>
+        <button class="btn ai" :disabled="!!aiRunning" @click="runAnalyze">
+          <span v-if="aiRunning === 'analyze'" class="spin"></span> 🩺 AI 体检
+        </button>
+        <button class="btn" @click="loadLogs">AI 记录</button>
+        <span class="toolbar-sep"></span>
+        <button class="btn" @click="openAiCfg">
+          ⚙ AI 设置
+          <span class="badge" :class="aiCfg.hasKey ? 'green' : 'red'">{{ aiCfg.hasKey ? '已配置' : '未配置' }}</span>
+        </button>
+      </template>
     </div>
 
     <p v-if="aiError" class="ai-error">⚠ {{ aiError }}<span v-if="!aiCfg.hasKey" class="dim">（点击右上角「AI 设置」配置服务）</span></p>
@@ -311,7 +326,11 @@ const statusLabel = (s) => {
       <div class="src-table-wrap">
         <table class="src-table">
           <thead>
-            <tr><th>状态</th><th>名称</th><th>标识</th><th>标签</th><th>最近检测</th><th>操作</th><th>搜索开关</th></tr>
+            <tr>
+              <th>状态</th><th>名称</th><th>标识</th><th>标签</th><th>最近检测</th>
+              <th v-if="isAdmin">操作</th>
+              <th>搜索开关</th>
+            </tr>
           </thead>
           <tbody>
             <tr v-for="s in sources" :key="s.id" :class="{ off: !s.enabled }">
@@ -331,7 +350,7 @@ const statusLabel = (s) => {
                 <span :class="statusLabel(s)[0]">{{ statusLabel(s)[1] }}</span>
                 <div class="dim note-line">{{ fmtTime(s.last_check_at) }}</div>
               </td>
-              <td>
+              <td v-if="isAdmin">
                 <div class="ops">
                   <button class="btn small" :disabled="checkingId === s.id" @click="checkOne(s.id)">
                     <span v-if="checkingId === s.id" class="spin"></span> 检测
@@ -349,7 +368,11 @@ const statusLabel = (s) => {
           </tbody>
         </table>
       </div>
-      <p class="tip">关闭的源在搜索时将被跳过（保存在本机浏览器）。检测/编辑/删除直接作用于本地数据库。</p>
+      <p class="tip">
+        关闭的源在搜索时将被跳过（保存在本机浏览器）。
+        <template v-if="isAdmin">检测/编辑/删除直接作用于本地数据库。</template>
+        <template v-else>新增源对所有人生效；管理操作需超级管理员登录。</template>
+      </p>
     </section>
 
     <!-- 导航站点 -->
@@ -428,7 +451,20 @@ const statusLabel = (s) => {
 <style scoped>
 .sites { padding-top: 34px; animation: rise 0.35s ease both; }
 h2 { margin: 0 0 6px; font-size: 22px; }
-.page-desc { color: var(--text-dim); margin: 0 0 24px; font-size: 14px; }
+.page-desc { color: var(--text-dim); margin: 0 0 10px; font-size: 14px; }
+.role-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 14px;
+  margin: 0 0 18px;
+}
 
 .toolbar {
   display: flex;
@@ -589,4 +625,12 @@ h2 { margin: 0 0 6px; font-size: 22px; }
 .log-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .log-list li { display: flex; align-items: center; gap: 10px; font-size: 13px; flex-wrap: wrap; }
 .log-time { color: var(--text-faint); font-size: 12px; }
+
+/* ---- 移动端 H5 ---- */
+@media (max-width: 720px) {
+  .sites { padding-top: 22px; }
+  .toolbar .btn { height: 34px; padding: 0 12px; font-size: 13px; }
+  .dialog { padding: 18px 16px; }
+  .role-hint { font-size: 12.5px; padding: 8px 12px; }
+}
 </style>

@@ -8,8 +8,11 @@
  */
 import { ref, computed } from 'vue';
 import { searchMusic, musicUrl, musicLyric, musicPic } from './api.js';
+import { record } from './historyStore.js';
 
 const VOL_KEY = 'fv_volume';
+const RATE_KEY = 'fv_rate';
+const SKIP_KEY = 'ab_skip';       // 听书跳过片头/片尾秒数 {head, tail}
 
 // ---- 响应式状态（模块级，全 app 共享） ----
 const queue = ref([]);            // 播放队列 [{songId?, name, artist, album?}]
@@ -22,16 +25,42 @@ const duration = ref(0);
 const bufferedEnd = ref(0);
 const volume = ref(parseFloat(localStorage.getItem(VOL_KEY) || '0.9'));
 const mode = ref('order');        // order 顺序 | loop 列表循环 | one 单曲循环 | shuffle 随机
+
+// ---- 倍速播放（全局音频，歌/听书通用） ----
+function clampRate(r) {
+  r = parseFloat(r);
+  if (!isFinite(r)) return 1;
+  return Math.min(Math.max(r, 0.5), 3);
+}
+const rate = ref(clampRate(localStorage.getItem(RATE_KEY) || '1'));
+
+// ---- 跳过片头/片尾（仅对听书章节生效，音乐不跳） ----
+function loadSkip() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SKIP_KEY) || '{}');
+    return {
+      head: Math.min(Math.max(parseInt(s.head) || 0, 0), 120),
+      tail: Math.min(Math.max(parseInt(s.tail) || 0, 0), 180)
+    };
+  } catch { return { head: 0, tail: 0 }; }
+}
+const skipCfg = ref(loadSkip());
+let skipFlags = { head: false, tail: false };
+function resetSkipFlags() { skipFlags = { head: false, tail: false }; }
+
 const lyricLines = ref([]);       // [{t, text}]
 const lyricIdx = ref(-1);
 const cover = ref('');
 
 const currentSong = computed(() => queue.value[currentIdx.value] || null);
+// 当前播的是不是听书章节（决定跳过片头片尾是否生效）
+const isAudiobook = computed(() => currentSong.value?.kind === 'audiobook');
 
 let audio = null;
 let loadSeq = 0;                  // 防止并发加载互相覆盖
 let consecutiveFails = 0;         // 连续解析/播放失败次数（歌单自动跳歌用，超限停下）
 let resolveRetryUsed = false;     // 懒解析条目（听书）直链失效后，重解析只自动试一次
+let lastRecordedKey = '';         // 听歌记录去重（同一首连播不重复记）
 const baseTitle = typeof document !== 'undefined' ? document.title : '';
 
 function ensureAudio() {
@@ -39,13 +68,17 @@ function ensureAudio() {
   audio = new Audio();
   audio.preload = 'auto';
   audio.volume = volume.value;
-  audio.addEventListener('loadedmetadata', () => { duration.value = audio.duration || 0; });
+  audio.addEventListener('loadedmetadata', () => {
+    duration.value = audio.duration || 0;
+    audio.playbackRate = rate.value;
+  });
   audio.addEventListener('timeupdate', onTime);
   audio.addEventListener('progress', () => {
     try { bufferedEnd.value = audio.buffered.end(audio.buffered.length - 1) || 0; } catch { /* ignore */ }
   });
   audio.addEventListener('playing', () => {
     playing.value = true; buffering.value = false; consecutiveFails = 0; resolveRetryUsed = false; updateTitle();
+    recordNowPlaying();
   });
   audio.addEventListener('pause', () => { playing.value = false; updateTitle(); });
   audio.addEventListener('ended', onEnded);
@@ -58,6 +91,7 @@ function ensureAudio() {
 
 function onTime() {
   currentTime.value = audio.currentTime || 0;
+  applySkipRules();
   const ls = lyricLines.value;
   if (!ls.length) { lyricIdx.value = -1; return; }
   let idx = -1;
@@ -66,6 +100,48 @@ function onTime() {
     else break;
   }
   lyricIdx.value = idx;
+}
+
+/** 跳过片头/片尾：仅对听书章节生效（音乐前奏/尾奏不跳） */
+function applySkipRules() {
+  if (!isAudiobook.value) return;
+  const { head, tail } = skipCfg.value;
+  const dur = duration.value;
+  if (head > 0 && !skipFlags.head && currentTime.value < head && (dur === 0 || dur > head + 3)) {
+    skipFlags.head = true;
+    audio.currentTime = head;
+    currentTime.value = head;
+    return;
+  }
+  if (tail > 0 && !skipFlags.tail && dur > tail + 5 && dur - currentTime.value <= tail) {
+    skipFlags.tail = true;
+    const t = targetIndex(1);
+    if (t === -1 || t === currentIdx.value) {
+      // 已是最后一集：直接结束
+      audio.pause();
+      playing.value = false; updateTitle();
+      return;
+    }
+    currentIdx.value = t;
+    loadCurrent();
+  }
+}
+
+/** 记入「最近听过」（听书章节由听书页自己记，带续播信息） */
+function recordNowPlaying() {
+  const s = queue.value[currentIdx.value];
+  if (!s || s.kind === 'audiobook') return;
+  const key = s.songId ? `song-${s.songId}` : `music|${s.name}|${s.artist}`;
+  if (lastRecordedKey === key) return;
+  lastRecordedKey = key;
+  record({
+    kind: 'music',
+    key,
+    title: s.name,
+    subtitle: s.artist || '',
+    cover: s.cover || cover.value || '',
+    payload: { name: s.name, artist: s.artist || '', album: s.album || '', songId: s.songId || '' }
+  });
 }
 
 /** 自然播完：按模式推进（顺序播放到队尾即停） */
@@ -113,7 +189,9 @@ function onFail(e, fromAudio = false) {
       const a = ensureAudio();
       error.value = '';
       buffering.value = true;
+      resetSkipFlags();
       a.src = re.url;
+      a.playbackRate = rate.value;
       a.play().catch(() => {});
     }).catch(() => skipCurrent());
     return;
@@ -191,10 +269,12 @@ async function loadCurrent(autoplay = true) {
     if (seq !== loadSeq) return;
     queue.value[currentIdx.value] = resolved;
     updateTitle();
+    resetSkipFlags();
     // 直链条目（听书章节）：直接播，不走歌曲解析/歌词/封面
     if (resolved.url) {
       cover.value = resolved.cover || '';
       a.src = resolved.url;
+      a.playbackRate = rate.value;
       if (autoplay) await a.play().catch(() => {});
       updateMediaSession(resolved);
       return;
@@ -304,6 +384,22 @@ function setVolume(v) {
   localStorage.setItem(VOL_KEY, String(v));
 }
 
+/** 倍速播放：0.5 ~ 3.0，立即作用于当前音频并记住选择 */
+function setRate(r) {
+  rate.value = clampRate(r);
+  localStorage.setItem(RATE_KEY, String(rate.value));
+  if (audio) audio.playbackRate = rate.value;
+}
+
+/** 听书跳过片头/片尾秒数（0 = 不跳），仅对听书章节生效 */
+function setSkip(head, tail) {
+  skipCfg.value = {
+    head: Math.min(Math.max(parseInt(head) || 0, 0), 120),
+    tail: Math.min(Math.max(parseInt(tail) || 0, 0), 180)
+  };
+  localStorage.setItem(SKIP_KEY, JSON.stringify(skipCfg.value));
+}
+
 function cycleMode() {
   mode.value = { order: 'loop', loop: 'one', one: 'shuffle', shuffle: 'order' }[mode.value];
 }
@@ -347,8 +443,25 @@ export function useMusicPlayer() {
     queue, currentIdx, playing, buffering, error,
     currentTime, duration, bufferedEnd, volume, mode,
     lyricLines, lyricIdx, cover, currentSong,
+    rate, skipCfg, isAudiobook,
     // 操作
     playList, playSong, addToQueue, toggle, jump, playAt, seek,
-    setVolume, cycleMode, removeAt, clearQueue
+    setVolume, cycleMode, removeAt, clearQueue,
+    setRate, setSkip
+  };
+}
+
+// 诊断/自动化测试用：直接驱动全局播放器（同 __fvAudio 惯例）
+if (typeof window !== 'undefined') {
+  window.__fvPlayer = {
+    playList, playAt, seek, toggle, jump,
+    setRate, setSkip,
+    state: () => ({
+      currentIdx: currentIdx.value, playing: playing.value,
+      currentTime: currentTime.value, duration: duration.value,
+      rate: rate.value, skip: skipCfg.value,
+      isAudiobook: isAudiobook.value,
+      name: currentSong.value?.name || ''
+    })
   };
 }
