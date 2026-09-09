@@ -223,8 +223,9 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
           </div>
           <template v-else>
             <div class="q-head">
-              <span>播放列表（{{ queue.length }} 首 · {{ modeMeta.label }}）</span>
-              <button class="q-clear" @click="clearQueue">清空</button>
+              <span>播放列表（{{ queue.length }} 首）</span>
+              <button class="q-mode" :title="modeMeta.label" @click="cycleMode">{{ modeMeta.label }}</button>
+              <button class="q-clear" @click="clearQueue">停止并清空</button>
             </div>
             <div class="q-list">
               <div
@@ -455,12 +456,22 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
 }
 .q-head {
   display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
   padding: 10px 14px;
   font-size: 13px; font-weight: 600;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.q-clear { font-size: 12px; color: var(--text-faint); }
+.q-mode {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--gold);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(242, 185, 75, 0.35);
+  white-space: nowrap;
+}
+.q-clear { font-size: 12px; color: var(--text-faint); white-space: nowrap; }
 .q-clear:hover { color: var(--red); }
 .q-list { overflow-y: auto; padding: 6px; }
 .q-row {
@@ -509,5 +520,15 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
   .rate-btn { min-width: 34px; padding: 0 6px; font-size: 11px; }
   .small-panel { right: 8px; left: auto; }
   .skip-row { flex-wrap: wrap; }
+}
+/* 超窄屏（≤420）：播放条变两行——第一行封面+歌名（完整可读），
+   第二行全部控制按钮居中；模式胶囊收进列表面板，其余按钮全部保留 */
+@media (max-width: 420px) {
+  .mini-inner { flex-wrap: wrap; row-gap: 2px; }
+  .m-left { flex: 1 1 100%; }
+  .m-center { flex: 1; justify-content: center; gap: 4px; }
+  .m-right { }
+  .pill { display: none; }
+  .m-name, .m-sub { max-width: none; }
 }
 </style>

@@ -252,6 +252,7 @@ h2 { margin: 0 0 6px; }
   border-radius: var(--radius);
   cursor: pointer;
   transition: all 0.18s;
+  min-width: 0;   /* grid 子项允许收缩，否则窄屏整卡溢出 */
 }
 .pl-card:hover {
   border-color: rgba(242, 185, 75, 0.45);
