@@ -479,8 +479,12 @@ h2 { margin: 0 0 6px; }
   .ab-search input { font-size: 16px; }   /* ≥16px 防 iOS 聚焦自动放大 */
   .ab-book { flex-wrap: wrap; padding: 12px; }
   .src-row { width: 100%; }
-  .ab-cover.big { width: 72px; height: 96px; }
-  .ab-book-head { gap: 12px; }
+  /* 书籍详情头：返回按钮独占一行，封面(缩小)与书名/主播/操作并排，避免各元素纵向堆叠 */
+  .ab-book-head { display: grid; grid-template-columns: 76px 1fr; gap: 6px 12px; align-items: start; }
+  .ab-book-head > .btn.small { grid-column: 1 / -1; justify-self: start; }
+  .ab-cover.big { grid-column: 1; grid-row: 2; width: 76px; height: 101px; }
+  .ab-book-info { grid-column: 2; grid-row: 2; min-width: 0; }
+  .ab-actions { margin-top: 8px; gap: 8px; }
   .ab-chapters { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
   .rec-card { flex: 0 0 180px; }
   .ab-book-intro { display: none; }

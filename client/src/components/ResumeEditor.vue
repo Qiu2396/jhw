@@ -417,16 +417,19 @@ textarea { resize: vertical; line-height: 1.6; }
 /* ---- 预览区 ---- */
 .rv-editor, .rv-preview { min-width: 0; }
 .rv-preview { position: sticky; top: 76px; }
-.paper-scaler { display: flex; justify-content: center; overflow: hidden; }
+/* 缩放原点在纸张左上角：容器必须左对齐（center 会把布局盒推出屏幕外） */
+.paper-scaler { display: flex; justify-content: flex-start; overflow: hidden; }
 .rv-paper {
   width: 794px;
+  flex-shrink: 0;   /* 纸张布局盒不被 flex 压缩，缩放全靠 transform */
   min-height: 1123px;
   background: #ffffff;
   color: #2b2f36;
   border-radius: 6px;
   box-shadow: var(--shadow-2);
   padding: 48px 56px;
-  transform-origin: top center;
+  /* 左上角为缩放原点：窄屏缩小后视觉盒不会向右溢出（top center 会推出右边界） */
+  transform-origin: top left;
   font-size: 13px;
   line-height: 1.7;
 }

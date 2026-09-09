@@ -563,7 +563,12 @@ h2 { margin: 0 0 6px; }
 @media (max-width: 720px) {
   .comic { padding-top: 22px; }
   .c-search input { font-size: 16px; }   /* ≥16px 防 iOS 聚焦自动放大 */
-  .c-cover.big { width: 84px; height: 112px; }
+  /* 漫画详情头：与听书同款——返回按钮一行，封面(缩小)与信息并排 */
+  .c-book-head { display: grid; grid-template-columns: 84px 1fr; gap: 6px 12px; align-items: start; }
+  .c-book-head > .btn.small { grid-column: 1 / -1; justify-self: start; }
+  .c-cover.big { grid-column: 1; grid-row: 2; width: 84px; height: 112px; }
+  .c-book-info { grid-column: 2; grid-row: 2; min-width: 0; }
+  .c-actions { margin-top: 8px; gap: 8px; }
   .c-chapters { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
   .c-reader { padding: 6px; }
   .rec-card { flex: 0 0 180px; }

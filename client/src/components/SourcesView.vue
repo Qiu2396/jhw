@@ -632,5 +632,8 @@ h2 { margin: 0 0 6px; font-size: 22px; }
   .toolbar .btn { height: 34px; padding: 0 12px; font-size: 13px; }
   .dialog { padding: 18px 16px; }
   .role-hint { font-size: 12.5px; padding: 8px 12px; }
+  /* 表格靠横向滚动查看：单元格内容不换行，避免一字一行竖排堆叠 */
+  .src-table th, .src-table td { white-space: nowrap; }
+  .api-cell { max-width: none; }
 }
 </style>
