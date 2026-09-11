@@ -4,8 +4,11 @@
  * 全部走后端成熟库（sharp / pdfjs+docx / imgly 本地模型 / 抖音解析代理），
  * 本组件负责交互：选文件（点选或拖拽）→ 调接口 → 预览与下载。
  */
-import { ref, computed, onUnmounted } from 'vue';
+import { ref, computed, onUnmounted, defineAsyncComponent } from 'vue';
 import AppIcon from './AppIcon.vue';
+
+// three.js 体积较大：3D 手机工坊按需加载，不进工具页主包
+const PhoneStudio = defineAsyncComponent(() => import('./PhoneStudio.vue'));
 
 const TOOLS = [
   { id: 'compress', icon: 'image', title: '压缩图片', desc: '画质可调、可限宽，透明图输出 WebP' },
@@ -20,7 +23,8 @@ const TOOLS = [
   { id: 'regex', icon: 'search', title: '正则测试', desc: '实时匹配测试，列出全部命中' },
   { id: 'hash', icon: 'hash', title: 'Hash 计算', desc: 'SHA-1 / 256 / 512，支持文本与文件' },
   { id: 'color', icon: 'droplet', title: '颜色转换', desc: 'HEX / RGB / HSL 互转，实时预览' },
-  { id: 'diff', icon: 'list', title: '文本对比', desc: '两段文本逐行对比，标出差异' }
+  { id: 'diff', icon: 'list', title: '文本对比', desc: '两段文本逐行对比，标出差异' },
+  { id: 'phone', icon: 'monitor', title: '3D 手机工坊', desc: '3D 建模 iPhone：自定义手机壳、壁纸与场景背景' }
 ];
 
 const activeTool = ref('');
@@ -765,6 +769,11 @@ onUnmounted(() => {
           </div>
         </template>
       </div>
+
+      <!-- 3D 手机工坊 -->
+      <div v-else-if="activeTool === 'phone'" class="work work-wide">
+        <PhoneStudio />
+      </div>
     </template>
 
     <!-- 隐藏文件选择器 -->
@@ -773,7 +782,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.tools { padding-top: 34px; animation: rise 0.35s ease both; }
+.tools { padding-top: 34px; animation: rise 0.35s ease; }
 h2 { margin: 0 0 6px; }
 .page-h { display: flex; align-items: center; gap: 9px; }
 .h-icon { color: var(--gold); }
@@ -890,6 +899,7 @@ h2 { margin: 0 0 6px; }
 .work-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
 .work-title { font-size: 17px; }
 .work { max-width: 760px; }
+.work-wide { max-width: 1100px; }
 .t-error { color: var(--red); font-size: 14px; margin: 0 0 14px; }
 
 .drop {

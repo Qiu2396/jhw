@@ -356,7 +356,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.comic { padding-top: 34px; animation: rise 0.35s ease both; }
+.comic { padding-top: 34px; animation: rise 0.35s ease; }
 h2 { margin: 0 0 6px; }
 .page-h { display: flex; align-items: center; gap: 9px; }
 .h-icon { color: var(--gold); }

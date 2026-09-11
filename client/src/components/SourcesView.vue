@@ -485,46 +485,50 @@ const statusLabel = (s) => {
       </div>
     </div>
 
-    <!-- AI 设置弹窗 -->
-    <div v-if="showAiCfg" class="mask" @click.self="showAiCfg = false">
-      <div class="dialog">
-        <h3>AI 服务设置</h3>
-        <p class="dim cfg-tip">填写任意 OpenAI 兼容服务（DeepSeek、Kimi、智谱、通义、OpenAI、本地 Ollama 等）。配置保存在本机数据库。</p>
-        <div class="form">
-          <label>接口地址 (Base URL) *<input v-model="aiForm.baseUrl" placeholder="如 https://api.deepseek.com/v1" /></label>
-          <label>模型名 *<input v-model="aiForm.model" placeholder="如 deepseek-chat" /></label>
-          <label>API Key {{ aiCfg.hasKey ? `（已保存 ${aiCfg.keyMasked}，留空则不修改）` : '*' }}<input v-model="aiForm.apiKey" type="password" placeholder="sk-…" /></label>
-        </div>
-        <p v-if="aiTestResult" class="form-msg" :class="{ err: !aiTestResult.includes('成功') }">{{ aiTestResult }}</p>
-        <div class="dialog-foot">
-          <button class="btn" :disabled="aiTesting" @click="testConn"><span v-if="aiTesting" class="spin"></span> 测试并保存</button>
-          <button class="btn primary" :disabled="aiSaving" @click="saveAiCfg">保存</button>
+    <!-- AI 设置弹窗（Teleport 到 body：fixed 定位不受任何祖先 transform 影响） -->
+    <Teleport to="body">
+      <div v-if="showAiCfg" class="mask" @click.self="showAiCfg = false">
+        <div class="dialog">
+          <h3>AI 服务设置</h3>
+          <p class="dim cfg-tip">填写任意 OpenAI 兼容服务（DeepSeek、Kimi、智谱、通义、OpenAI、本地 Ollama 等）。配置保存在本机数据库。</p>
+          <div class="form">
+            <label>接口地址 (Base URL) *<input v-model="aiForm.baseUrl" placeholder="如 https://api.deepseek.com/v1" /></label>
+            <label>模型名 *<input v-model="aiForm.model" placeholder="如 deepseek-chat" /></label>
+            <label>API Key {{ aiCfg.hasKey ? `（已保存 ${aiCfg.keyMasked}，留空则不修改）` : '*' }}<input v-model="aiForm.apiKey" type="password" placeholder="sk-…" /></label>
+          </div>
+          <p v-if="aiTestResult" class="form-msg" :class="{ err: !aiTestResult.includes('成功') }">{{ aiTestResult }}</p>
+          <div class="dialog-foot">
+            <button class="btn" :disabled="aiTesting" @click="testConn"><span v-if="aiTesting" class="spin"></span> 测试并保存</button>
+            <button class="btn primary" :disabled="aiSaving" @click="saveAiCfg">保存</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- AI 日志弹窗 -->
-    <div v-if="showLogs" class="mask" @click.self="showLogs = false">
-      <div class="dialog">
-        <h3>AI 操作记录</h3>
-        <div v-if="!logs.length" class="dim">暂无记录</div>
-        <ul class="log-list">
-          <li v-for="l in logs" :key="l.id">
-            <span class="log-time">{{ new Date(l.created_at).toLocaleString('zh-CN', { hour12: false }) }}</span>
-            <span class="badge">{{ l.action === 'discover' ? '发现新源' : '体检分析' }}</span>
-            <span>{{ l.summary }}</span>
-          </li>
-        </ul>
-        <div class="dialog-foot">
-          <button class="btn" @click="showLogs = false">关闭</button>
+    <Teleport to="body">
+      <div v-if="showLogs" class="mask" @click.self="showLogs = false">
+        <div class="dialog">
+          <h3>AI 操作记录</h3>
+          <div v-if="!logs.length" class="dim">暂无记录</div>
+          <ul class="log-list">
+            <li v-for="l in logs" :key="l.id">
+              <span class="log-time">{{ new Date(l.created_at).toLocaleString('zh-CN', { hour12: false }) }}</span>
+              <span class="badge">{{ l.action === 'discover' ? '发现新源' : '体检分析' }}</span>
+              <span>{{ l.summary }}</span>
+            </li>
+          </ul>
+          <div class="dialog-foot">
+            <button class="btn" @click="showLogs = false">关闭</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
-.sites { padding-top: 34px; animation: rise 0.35s ease both; }
+.sites { padding-top: 34px; animation: rise 0.35s ease; }
 h2 { margin: 0 0 6px; font-size: 22px; }
 .page-desc { color: var(--text-dim); margin: 0 0 10px; font-size: 14px; }
 .role-hint {

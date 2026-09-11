@@ -112,7 +112,7 @@ export const aiLogs = () => getJSON('/api/ai/logs');
 
 /* ---- 音乐（免费听歌） ---- */
 
-export const searchMusic = (name, count = 30) =>
+export const searchMusic = (name, count = 50) =>
   getJSON(`/api/music/search?name=${encodeURIComponent(name)}&count=${count}&_=${Date.now()}`);
 
 export const musicUrl = (songId, br = 320000) =>
@@ -156,6 +156,20 @@ export const comicBook = (src, url) =>
 
 export const comicImages = (src, url) =>
   getJSON(`/api/comic/images?src=${encodeURIComponent(src)}&url=${encodeURIComponent(url)}&_=${Date.now()}`);
+
+/* ---- 壁纸 ---- */
+
+export const wallpaperSearch = (kw, page = 1, cat = '') =>
+  getJSON(`/api/wallpaper/search?kw=${encodeURIComponent(kw)}&cat=${encodeURIComponent(cat)}&page=${page}&_=${Date.now()}`);
+
+export const wallpaperDaily = (page = 1) =>
+  getJSON(`/api/wallpaper/daily?page=${page}&_=${Date.now()}`);
+
+export const wallpaperDetail = (src, url) =>
+  getJSON(`/api/wallpaper/detail?src=${encodeURIComponent(src)}&url=${encodeURIComponent(url)}&_=${Date.now()}`);
+
+export const wallpaperImgProxy = (url, dl = '') =>
+  `/api/wallpaper/img?u=${encodeURIComponent(url)}${dl ? `&dl=${encodeURIComponent(dl)}` : ''}`;
 
 /* ---- 在线简历（多文档云同步，需登录） ---- */
 

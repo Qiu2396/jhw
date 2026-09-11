@@ -219,9 +219,12 @@ input { font-family: inherit; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* 结束帧必须归为 none：fill-mode 会把结束帧永久留在元素上，
+   残留的 transform 会让页面内 position:fixed 弹窗（如 AI 设置）以页面为基准定位，
+   导致弹窗「居中到整页中间」要滚动才能看到 */
 @keyframes pop-in {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes fade-in {
   from { opacity: 0; }
@@ -229,7 +232,7 @@ input { font-family: inherit; }
 }
 @keyframes rise {
   from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 
 code {

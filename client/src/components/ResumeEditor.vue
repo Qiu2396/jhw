@@ -663,7 +663,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.rv { padding-top: 34px; animation: rise 0.35s ease both; }
+.rv { padding-top: 34px; animation: rise 0.35s ease; }
 .page-h { display: flex; align-items: center; gap: 9px; margin: 0 0 6px; }
 .h-icon { color: var(--gold); }
 .rv-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }

@@ -255,47 +255,51 @@ function catOf(id) {
       {{ search ? '没有匹配的网站，换个关键词试试' : '这个分类还是空的，点「添加网站」放一个进去' }}
     </div>
 
-    <!-- 网站 编辑/添加 弹窗 -->
-    <div v-if="showSiteDialog" class="mask" @click.self="showSiteDialog = false">
-      <div class="dialog">
-        <h3>{{ editing ? '编辑网站' : '添加网站' }}</h3>
-        <div class="form">
-          <label>名称 *<input v-model="siteForm.name" maxlength="20" placeholder="如：Vue.js" /></label>
-          <label>网址 *<input v-model="siteForm.url" maxlength="200" placeholder="vuejs.org（可省略 https://）" @keyup.enter="saveSite" /></label>
-          <label>分类
-            <select v-model="siteForm.cat">
-              <option v-for="c in store.categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-            </select>
-          </label>
-          <label>或新建分类<input v-model="siteForm.newCat" maxlength="12" placeholder="留空则使用上面选择的分类" /></label>
-          <label>描述<input v-model="siteForm.desc" maxlength="30" placeholder="一句话说明（可选）" /></label>
-        </div>
-        <p v-if="siteErr" class="qs-err">⚠ {{ siteErr }}</p>
-        <div class="dialog-foot">
-          <button class="btn" @click="showSiteDialog = false">取消</button>
-          <button class="btn primary" @click="saveSite">保存</button>
+    <!-- 网站 编辑/添加 弹窗（Teleport 到 body：fixed 定位不受任何祖先 transform 影响） -->
+    <Teleport to="body">
+      <div v-if="showSiteDialog" class="mask" @click.self="showSiteDialog = false">
+        <div class="dialog">
+          <h3>{{ editing ? '编辑网站' : '添加网站' }}</h3>
+          <div class="form">
+            <label>名称 *<input v-model="siteForm.name" maxlength="20" placeholder="如：Vue.js" /></label>
+            <label>网址 *<input v-model="siteForm.url" maxlength="200" placeholder="vuejs.org（可省略 https://）" @keyup.enter="saveSite" /></label>
+            <label>分类
+              <select v-model="siteForm.cat">
+                <option v-for="c in store.categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+            </label>
+            <label>或新建分类<input v-model="siteForm.newCat" maxlength="12" placeholder="留空则使用上面选择的分类" /></label>
+            <label>描述<input v-model="siteForm.desc" maxlength="30" placeholder="一句话说明（可选）" /></label>
+          </div>
+          <p v-if="siteErr" class="qs-err">⚠ {{ siteErr }}</p>
+          <div class="dialog-foot">
+            <button class="btn" @click="showSiteDialog = false">取消</button>
+            <button class="btn primary" @click="saveSite">保存</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- 新分类 弹窗 -->
-    <div v-if="showCatDialog" class="mask" @click.self="showCatDialog = false">
-      <div class="dialog">
-        <h3>新建分类</h3>
-        <div class="form">
-          <label>分类名称 *<input v-model="newCatName" maxlength="12" placeholder="如：后端开发 / 影音娱乐" @keyup.enter="addCategory(); showCatDialog = false" /></label>
-        </div>
-        <div class="dialog-foot">
-          <button class="btn" @click="showCatDialog = false">取消</button>
-          <button class="btn primary" @click="addCategory(); showCatDialog = false">创建</button>
+    <Teleport to="body">
+      <div v-if="showCatDialog" class="mask" @click.self="showCatDialog = false">
+        <div class="dialog">
+          <h3>新建分类</h3>
+          <div class="form">
+            <label>分类名称 *<input v-model="newCatName" maxlength="12" placeholder="如：后端开发 / 影音娱乐" @keyup.enter="addCategory(); showCatDialog = false" /></label>
+          </div>
+          <div class="dialog-foot">
+            <button class="btn" @click="showCatDialog = false">取消</button>
+            <button class="btn primary" @click="addCategory(); showCatDialog = false">创建</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
-.qs { padding-top: 34px; animation: rise 0.35s ease both; }
+.qs { padding-top: 34px; animation: rise 0.35s ease; }
 .page-h { display: flex; align-items: center; gap: 9px; margin: 0 0 6px; }
 .h-icon { color: var(--gold); }
 .page-desc { color: var(--text-dim); margin: 0 0 20px; font-size: 14px; }

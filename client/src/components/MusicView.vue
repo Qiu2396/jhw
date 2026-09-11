@@ -365,7 +365,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.music { padding-top: 34px; animation: rise 0.35s ease both; padding-bottom: 30px; }
+.music { padding-top: 34px; animation: rise 0.35s ease; padding-bottom: 30px; }
 h2 { margin: 0 0 6px; }
 .page-h { display: flex; align-items: center; gap: 9px; }
 .h-icon { color: var(--gold); }
@@ -436,7 +436,7 @@ h2 { margin: 0 0 6px; }
 .m-search { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
 .m-search input {
   flex: 1;
-  max-width: 460px;
+  min-width: 0; max-width: 460px;
   height: 38px;
   background: var(--surface);
   border: 1px solid var(--border);

@@ -21,6 +21,7 @@ import { searchMusic, musicUrl, musicLyric, musicPic, checkMusicSource } from '.
 import { novelSearch, novelToc, novelChapter, isAllowedNovelUrl, checkNovelSource } from './novel.js';
 import { audiobookSearch, audiobookBook, audiobookPlay, isAllowedAudiobookUrl, checkAudiobookSource } from './audiobook.js';
 import { comicSearch, comicBook, comicImages, isAllowedComicUrl, checkComicSource } from './comic.js';
+import { wallpaperSearch, wallpaperDaily, wallpaperDetail, isAllowedWallpaperUrl, checkWallpaperSource } from './wallpaper.js';
 import { listChannelSources, setDisabled } from './channel-sources.js';
 import toolsRouter from './tools.js';
 import { resourceSearch } from './resource.js';
@@ -266,7 +267,7 @@ app.get('/api/music/search', async (req, res) => {
   const name = String(req.query.name || '').trim();
   if (!name) return res.status(400).json({ error: '缺少关键词 name' });
   try {
-    res.json({ songs: await searchMusic(name, parseInt(req.query.count) || 30) });
+    res.json({ songs: await searchMusic(name, parseInt(req.query.count) || 50) });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
@@ -311,7 +312,8 @@ const CHANNEL_CHECKERS = {
   music: () => checkMusicSource(),
   novel: (id) => checkNovelSource(id),
   audiobook: (id) => checkAudiobookSource(id),
-  comic: (id) => checkComicSource(id)
+  comic: (id) => checkComicSource(id),
+  wallpaper: (id) => checkWallpaperSource(id)
 };
 
 // 公开读取：站点目录展示各频道内置源与启停状态
@@ -453,6 +455,58 @@ app.get('/api/comic/images', async (req, res) => {
     res.json(await comicImages(src, url));
   } catch (e) {
     res.status(502).json({ error: e.message });
+  }
+});
+
+/* ---------------- 壁纸（多源聚合搜索 + 必应每日 + 多分辨率下载） ---------------- */
+
+app.get('/api/wallpaper/search', async (req, res) => {
+  const kw = String(req.query.kw || '').trim();
+  const cat = String(req.query.cat || '').trim();
+  if (!kw && !cat) return res.status(400).json({ error: '缺少关键词 kw 或分类 cat' });
+  try {
+    res.json(await wallpaperSearch(kw, req.query.page, cat));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/wallpaper/daily', async (req, res) => {
+  try {
+    res.json(await wallpaperDaily(req.query.page));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/wallpaper/detail', async (req, res) => {
+  const src = String(req.query.src || '').trim();
+  const url = String(req.query.url || '').trim();
+  if (!src || !url) return res.status(400).json({ error: '缺少参数 src / url' });
+  if (src !== 'bing' && !isAllowedWallpaperUrl(url)) return res.status(400).json({ error: 'url 不在收录源范围内' });
+  try {
+    res.json(await wallpaperDetail(src, url));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// 图片代理：仅用于「下载」（带附件文件名）；host 白名单防 SSRF
+app.get('/api/wallpaper/img', async (req, res) => {
+  const url = String(req.query.u || '').trim();
+  if (!isAllowedWallpaperUrl(url)) return res.status(400).json({ error: 'url 不在收录源范围内' });
+  try {
+    const upstream = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' } });
+    if (!upstream.ok || !upstream.body) return res.status(502).json({ error: `源站返回 ${upstream.status}` });
+    const name = String(req.query.dl || '').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80) || 'wallpaper.jpg';
+    const ext = (url.match(/\.(jpe?g|png|webp)(?:$|&)/i) || [])[1] || 'jpg';
+    res.setHeader('Content-Type', upstream.headers.get('content-type') || `image/${ext}`);
+    if (upstream.headers.get('content-length')) res.setHeader('Content-Length', upstream.headers.get('content-length'));
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}.${ext}`);
+    const { Readable } = await import('node:stream');
+    Readable.fromWeb(upstream.body).pipe(res);
+  } catch (e) {
+    res.status(502).json({ error: e.message || '图片获取失败' });
   }
 });
 

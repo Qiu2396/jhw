@@ -6,13 +6,14 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { useMusicPlayer } from '../musicStore.js';
 import PelicanRider from './PelicanRider.vue';
+import PlayerDetail from './PlayerDetail.vue';
 import AppIcon from './AppIcon.vue';
 
 const {
   queue, currentIdx, playing, buffering, error,
   currentTime, duration, bufferedEnd, volume, mode,
   lyricLines, lyricIdx, currentSong,
-  rate, skipCfg, isAudiobook,
+  rate, skipCfg, isAudiobook, detailOpen,
   toggle, jump, playAt, seek, setVolume, cycleMode, removeAt, clearQueue,
   setRate, setSkip
 } = useMusicPlayer();
@@ -104,8 +105,8 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
       </div>
 
       <div class="mini-inner">
-        <!-- 左：封面 + 信息 -->
-        <div class="m-left">
+        <!-- 左：封面 + 信息（点击展开全屏播放详情） -->
+        <div class="m-left" title="展开播放详情" @click="detailOpen = true">
           <!-- 唱片位常驻鹈鹕骑车：播放时蹬车前进，暂停时定格 -->
           <div class="disc">
             <PelicanRider :size="36" :paused="!playing" />
@@ -159,6 +160,7 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
               @input="e => setVolume(parseFloat(e.target.value))"
             />
           </div>
+          <button class="ctrl" title="展开播放详情" @click="detailOpen = true"><AppIcon name="chevron-up" :size="15" /></button>
           <button class="ctrl" :class="{ on: panelTab === 'lyric' }" title="歌词" @click="togglePanel('lyric')"><AppIcon name="audio-lines" :size="15" /></button>
           <button class="ctrl" :class="{ on: panelTab === 'queue' }" title="播放列表" @click="togglePanel('queue')"><AppIcon name="list" :size="15" /></button>
           <button class="ctrl close" title="停止并清空播放列表" @click="clearQueue"><AppIcon name="x" :size="15" /></button>
@@ -247,6 +249,9 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
           </template>
         </div>
       </Transition>
+
+      <!-- 全屏播放详情（网易云风格：黑胶 + 歌词 + 完整控制） -->
+      <PlayerDetail />
     </div>
   </Transition>
 </template>
@@ -299,7 +304,7 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
   margin: 0 auto;
   padding: 10px 20px;
 }
-.m-left { display: flex; align-items: center; gap: 13px; min-width: 0; flex: 1; }
+.m-left { display: flex; align-items: center; gap: 13px; min-width: 0; flex: 1; cursor: pointer; }
 .disc {
   width: 46px; height: 46px;
   border-radius: 50%;

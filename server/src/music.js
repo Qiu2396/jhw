@@ -45,13 +45,14 @@ async function gdFetch(params) {
   }
 }
 
-export async function searchMusic(name, count = 30) {
+export async function searchMusic(name, count = 50) {
   const kw = String(name || '').trim();
   if (!kw) throw new Error('缺少关键词');
   const list = await gdFetch({
     types: 'search',
     name: kw,
-    count: String(Math.min(Math.max(count, 1), 30)),
+    // 上游实测支持 count=50；pages 翻页与第一页大量重复且页内有重复歌，不采用
+    count: String(Math.min(Math.max(count, 1), 50)),
     pages: '1'
   });
   if (!Array.isArray(list)) throw new Error('音乐服务响应异常');

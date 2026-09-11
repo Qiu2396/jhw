@@ -11,6 +11,10 @@ import { ref, computed, onMounted } from 'vue';
 import { audiobookSearch, audiobookBook, audiobookPlay } from '../api.js';
 import { useMusicPlayer } from '../musicStore.js';
 import { peekList, loadKind, removeEntry, record, clearKind, takePendingResume } from '../historyStore.js';
+import {
+  supportsDirInput, scanDirectory, scanFileList, chapterObjectUrl,
+  loadSavedRoot, saveRoot, forgetRoot, ensurePermission
+} from '../localBooks.js';
 import PelicanRider from './PelicanRider.vue';
 import AppIcon from './AppIcon.vue';
 
@@ -31,19 +35,37 @@ const bookLoading = ref(false);
 const bookError = ref('');
 const openedFrom = ref(null);        // 打开时的搜索结果（用于多源切换）
 
+// ---- 本地书架：网盘下载的有声书，读本机文件夹直接播（逻辑在 localBooks.js） ----
+const savedHandle = ref(null);       // File System Access 目录句柄（IndexedDB 持久化）
+const localBooks = ref([]);
+const localStatus = ref('idle');     // idle 没导入 | scanning | needPermission | ready
+const localScanMsg = ref('');
+const localCurrent = ref(null);      // 打开的本地书
+const localResumeIdx = ref(-1);      // 上次听到第几集（0 基）
+const dirInput = ref(null);          // webkitdirectory / iOS 多选兜底 input
+
 const playing = computed(() =>
   !!currentSong.value && currentSong.value.album === currentBook.value?.bookName
 );
 const playingIdx = computed(() =>
   playing.value ? currentSong.value?._ch ?? -1 : -1
 );
+const localPlayingIdx = computed(() =>
+  currentSong.value?._albumKey === localCurrent.value?.key ? currentSong.value?._ch ?? -1 : -1
+);
 
-// 章节筛选：上千章里按编号或标题快速定位
+// 章节筛选：上千章里按编号或标题快速定位（在线书/本地书共用一个筛选词）
 const chFilter = ref('');
 const shownChapters = computed(() => {
   const k = chFilter.value.trim().toLowerCase();
   const all = chapters.value.map((c, i) => ({ ...c, _i: i }));
   return k ? all.filter(c => c.name.toLowerCase().includes(k)) : all;
+});
+const shownLocal = computed(() => {
+  const k = chFilter.value.trim().toLowerCase();
+  const all = (localCurrent.value?.chapters || []).map((c, i) => ({ ...c, _i: i }));
+  if (!k) return all;
+  return all.filter(c => c.title.toLowerCase().includes(k) || String(c._i + 1).includes(k));
 });
 
 // 解析结果缓存：同一章节重复播放不重复请求
@@ -115,6 +137,101 @@ async function doSearch() {
   } finally {
     searching.value = false;
   }
+}
+
+// ---- 本地书架：导入 → 扫描 → 点书进章节列表，播放走全局播放器 ----
+
+async function scanSaved(h) {
+  localStatus.value = 'scanning';
+  localScanMsg.value = '正在扫描…';
+  try {
+    const books = await scanDirectory(h, n => { localScanMsg.value = `已发现 ${n} 个音频…`; });
+    localBooks.value = books;
+    localStatus.value = 'ready';
+    localScanMsg.value = books.length
+      ? (books.truncated ? `文件夹太大，只导入了前面一部分音频` : '')
+      : '这个文件夹里没有找到音频文件';
+  } catch (e) {
+    localStatus.value = 'idle';
+    localScanMsg.value = e.message || '扫描失败';
+  }
+}
+
+async function importFolder() {
+  if ('showDirectoryPicker' in window) {
+    try {
+      const h = await window.showDirectoryPicker({ id: 'fv-audiobooks' });
+      savedHandle.value = h;
+      await saveRoot(h);          // 存句柄：下次打开书架还在（免重新选文件夹）
+      return scanSaved(h);
+    } catch (e) {
+      if (e?.name === 'AbortError') return;   // 用户取消了选择
+      // 其余异常（非安全上下文等）落到底部 input 兜底
+    }
+  }
+  dirInput.value?.click();
+}
+
+function onLocalFiles(e) {
+  const list = Array.from(e.target.files || []);
+  e.target.value = '';
+  if (!list.length) return;
+  localStatus.value = 'scanning';
+  localScanMsg.value = '正在扫描…';
+  setTimeout(() => {              // 先让界面渲染出扫描态再算
+    const books = scanFileList(list);
+    localBooks.value = books;
+    localStatus.value = 'ready';
+    localScanMsg.value = books.length ? '' : '所选文件里没有音频';
+  }, 30);
+}
+
+async function regrantLocal() {
+  if (await ensurePermission(savedHandle.value, { prompt: true })) return scanSaved(savedHandle.value);
+  localScanMsg.value = '没有获得文件夹访问权限，可点「换文件夹」重选';
+}
+
+async function clearLocalShelf() {
+  if (!confirm('清空本地书架？只移除授权记录，不删除电脑里的文件。')) return;
+  await forgetRoot();
+  savedHandle.value = null;
+  localBooks.value = [];
+  localScanMsg.value = '';
+  localStatus.value = 'idle';
+  if (stage.value === 'local') stage.value = 'search';
+}
+
+function openLocalBook(b) {
+  localCurrent.value = b;
+  chFilter.value = '';
+  const p = loadProgress()[b.key];
+  localResumeIdx.value = p && p.idx >= 0 && p.idx < b.chapters.length ? p.idx : -1;
+  stage.value = 'local';
+}
+
+/** 本地书入队：resolve() 现场生成 blob: 对象 URL（磁盘流式读取，不占内存），
+ *  自动连播 / 倍速 / 跳片头片尾 / 进度记忆全部由全局播放器承接 */
+function buildLocalQueue(b) {
+  return b.chapters.map((c, i) => ({
+    name: c.title,
+    artist: `${b.name} · 本地`,
+    album: '',                    // 书名已在 artist 里；_albumKey 供逻辑匹配
+    _albumKey: b.key,             // 逻辑用：标识属于哪本本地书
+    cover: '',
+    kind: 'audiobook',
+    _ch: i,
+    resolveError: '本集音频读取失败，已自动跳到下一集',
+    resolve: async () => {
+      saveProgress({ key: b.key, idx: i, url: '', name: c.title, local: true });
+      return { url: await chapterObjectUrl(c) };
+    }
+  }));
+}
+
+function playLocalChapter(i) {
+  const b = localCurrent.value;
+  if (!b?.chapters.length) return;
+  playList(buildLocalQueue(b), i);
 }
 
 /** 组装播放队列：每章一个懒解析器，播到该集时才向后端要音频地址；
@@ -192,6 +309,13 @@ onMounted(async () => {
   // 从首页「继续听」跳转过来：直接续播
   const pendingEntry = takePendingResume('audiobook');
   if (pendingEntry) resumeEntry(pendingEntry);
+  // 本地书架：恢复上次授权的文件夹（Chrome/Edge；新会话需点一次「重新授权」）
+  const h = await loadSavedRoot();
+  if (h) {
+    savedHandle.value = h;
+    if (await ensurePermission(h)) scanSaved(h);
+    else localStatus.value = 'needPermission';
+  }
 });
 </script>
 
@@ -202,7 +326,7 @@ onMounted(async () => {
       <AppIcon v-else name="headphones" :size="22" class="h-icon" />
       听书
     </h2>
-    <p class="page-desc">真人演播的有声小说，搜书名免费听。选一章，剩下的自动连播；切页、听歌都不打断。</p>
+    <p class="page-desc">真人演播的有声小说，搜书名免费听；搜不到的书把网盘下载的音频用「本地文件夹」导入。选一章自动连播，切页、听歌都不打断。</p>
 
     <!-- 搜索态 -->
     <template v-if="stage === 'search'">
@@ -211,7 +335,41 @@ onMounted(async () => {
         <button class="btn primary" type="submit" :disabled="searching">
           <span v-if="searching" class="spin"></span> 搜索
         </button>
+        <button class="btn" type="button" title="网盘下载的有声书：读本机文件夹直接播" @click="importFolder">
+          <AppIcon name="plus" :size="13" /> 本地文件夹
+        </button>
       </form>
+
+      <!-- 本地书架：按文件夹分书，点开即播；Chrome/Edge 下书架记住文件夹，下次还在 -->
+      <section v-if="localStatus !== 'idle'" class="rec-sec">
+        <div class="rec-head">
+          <h3 class="blk-title"><AppIcon name="book-open" :size="16" /> 本地书架</h3>
+          <div class="local-ops">
+            <button class="btn small" @click="importFolder">{{ savedHandle ? '换文件夹' : '选文件夹' }}</button>
+            <button v-if="savedHandle" class="btn small" @click="clearLocalShelf">清空书架</button>
+          </div>
+        </div>
+        <div v-if="localStatus === 'needPermission'" class="ab-local-tip">
+          上次导入的文件夹需要重新授权后才能读取
+          <button class="btn small primary" @click="regrantLocal">重新授权</button>
+        </div>
+        <div v-else-if="localStatus === 'scanning'" class="ab-center">
+          <span class="spin"></span> {{ localScanMsg || '正在扫描…' }}
+        </div>
+        <template v-else>
+          <p v-if="localScanMsg" class="dim ab-local-tip">{{ localScanMsg }}</p>
+          <div v-if="localBooks.length" class="rec-row">
+            <div v-for="b in localBooks" :key="b.key" class="rec-card" @click="openLocalBook(b)">
+              <div class="rec-cover">{{ (b.name || '').slice(0, 1) }}</div>
+              <div class="rec-info">
+                <div class="rec-title">{{ b.name }}</div>
+                <div class="rec-sub">{{ b.chapters.length }} 集<span v-if="b.sub"> · {{ b.sub }}</span></div>
+                <div v-if="progressInfo(b)" class="rec-sub ab-local-prog">{{ progressInfo(b) }}</div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </section>
 
       <!-- 继续听：个人听书记录，点击直接从上次那集接着播 -->
       <section v-if="abHistory.length" class="rec-sec">
@@ -309,11 +467,68 @@ onMounted(async () => {
         <p v-if="!shownChapters.length" class="dim ab-empty">没有匹配「{{ chFilter }}」的章节</p>
       </template>
     </template>
+
+    <!-- 本地书章节态 -->
+    <template v-if="stage === 'local'">
+      <div class="ab-book-head">
+        <button class="btn small" @click="stage = 'search'"><AppIcon name="arrow-left" :size="13" /> 返回书架</button>
+        <div class="ab-cover big fallback">{{ (localCurrent?.name || '').slice(0, 1) }}</div>
+        <div class="ab-book-info">
+          <b class="ab-book-title">《{{ localCurrent?.name }}》</b>
+          <div class="ab-book-meta">
+            <span>{{ localCurrent?.chapters.length }} 集</span>
+            <span class="dim">本地文件</span>
+            <span v-if="localCurrent?.sub" class="dim">{{ localCurrent.sub }}</span>
+          </div>
+          <div class="ab-actions">
+            <button class="btn primary" @click="playLocalChapter(localResumeIdx >= 0 ? localResumeIdx : 0)">
+              <AppIcon name="play" :size="13" />
+              {{ localResumeIdx >= 0 ? `从第 ${localResumeIdx + 1} 集继续` : '播放全部' }}
+            </button>
+            <button v-if="localResumeIdx >= 0" class="btn" @click="playLocalChapter(0)">从头播放</button>
+          </div>
+        </div>
+      </div>
+      <div class="ab-chfilter-row" v-if="(localCurrent?.chapters.length || 0) > 60">
+        <input
+          v-model="chFilter"
+          class="ab-chfilter"
+          :placeholder="`筛选 ${localCurrent.chapters.length} 集中的章节，如：0021`"
+        />
+        <span v-if="chFilter" class="dim ab-chfilter-n">{{ shownLocal.length }} 集</span>
+      </div>
+      <div class="ab-chapters">
+        <button
+          v-for="c in shownLocal"
+          :key="c._i"
+          class="ab-ch"
+          :class="{ cur: localPlayingIdx === c._i }"
+          :title="localPlayingIdx === c._i ? '正在播放' : '播放这一集'"
+          @click="playLocalChapter(c._i)"
+        >
+          <span v-if="localPlayingIdx === c._i" class="eq"><i></i><i></i><i></i></span>
+          <span class="ab-ch-name">{{ c.title }}</span>
+        </button>
+      </div>
+      <p v-if="!shownLocal.length" class="dim ab-empty">没有匹配「{{ chFilter }}」的章节</p>
+    </template>
+
+    <!-- 兜底选文件夹：<input webkitdirectory>（Firefox/Safari/安卓）；
+         不认识该属性的浏览器（iOS Safari）自动退化为多选音频文件 -->
+    <input
+      ref="dirInput"
+      type="file"
+      class="hide-input"
+      multiple
+      webkitdirectory
+      :accept="supportsDirInput() ? undefined : 'audio/*'"
+      @change="onLocalFiles"
+    />
   </div>
 </template>
 
 <style scoped>
-.ab { padding-top: 34px; animation: rise 0.35s ease both; }
+.ab { padding-top: 34px; animation: rise 0.35s ease; }
 h2 { margin: 0 0 6px; }
 .page-h { display: flex; align-items: center; gap: 9px; }
 .h-icon { color: var(--gold); }
@@ -366,7 +581,7 @@ h2 { margin: 0 0 6px; }
 
 .ab-search { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
 .ab-search input {
-  flex: 1; max-width: 460px;
+  flex: 1; min-width: 0; max-width: 460px;
   height: 38px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -377,6 +592,20 @@ h2 { margin: 0 0 6px; }
 }
 .ab-search input:focus { border-color: rgba(242, 185, 75, 0.5); box-shadow: 0 0 0 3px rgba(242, 185, 75, 0.1); }
 .ab-search .btn { height: 38px; }
+
+/* ---- 本地书架 ---- */
+.local-ops { display: flex; gap: 8px; }
+.ab-local-tip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+}
+.ab-local-prog { color: var(--gold); }
+.hide-input { display: none; }
 .ab-error { color: var(--red); font-size: 14px; margin: 0 0 14px; }
 .ab-empty { text-align: center; padding: 60px 0; }
 .ab-center { display: flex; align-items: center; gap: 10px; color: var(--text-dim); padding: 30px 0; justify-content: center; }

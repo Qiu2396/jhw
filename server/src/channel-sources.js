@@ -17,7 +17,11 @@ export const CHANNEL_SOURCES = [
   { kind: 'novel', kindName: '小说', id: 'yueduku', name: '阅读库', desc: '杰奇模板站' },
   { kind: 'novel', kindName: '小说', id: 'dingdian', name: '顶点小说', desc: '杰奇模板站' },
   { kind: 'audiobook', kindName: '听书', id: 'yuetingba', name: '悦听吧', desc: '真人演播有声小说（加密音频接口已逆向）' },
-  { kind: 'comic', kindName: '漫画', id: 'wmanhua', name: 'W漫画', desc: '主流国漫书库，图片无防盗链' }
+  { kind: 'comic', kindName: '漫画', id: 'wmanhua', name: 'W漫画', desc: '主流国漫书库，图片无防盗链' },
+  { kind: 'wallpaper', kindName: '壁纸', id: 'w4k', name: '4K Wallpapers', desc: '分类全、标签规整，支持 4K/2K/手机多分辨率下载' },
+  { kind: 'wallpaper', kindName: '壁纸', id: 'wpc', name: 'WallpaperCave', desc: '社区图库量大，原图单分辨率' },
+  { kind: 'wallpaper', kindName: '壁纸', id: 'bing', name: '必应每日精选', desc: '每日首页壁纸，含 4K UHD，支持往期翻页' },
+  { kind: 'wallpaper', kindName: '壁纸', id: 'picsum', name: 'Picsum 摄影', desc: '精选摄影图集，无搜索、按图集浏览' }
 ];
 
 function keyOf(kind, id) {

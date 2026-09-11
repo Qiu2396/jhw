@@ -51,6 +51,7 @@ function resetSkipFlags() { skipFlags = { head: false, tail: false }; }
 const lyricLines = ref([]);       // [{t, text}]
 const lyricIdx = ref(-1);
 const cover = ref('');
+const detailOpen = ref(false);    // 全屏播放详情（网易云风格：黑胶 + 歌词）
 
 const currentSong = computed(() => queue.value[currentIdx.value] || null);
 // 当前播的是不是听书章节（决定跳过片头片尾是否生效）
@@ -448,7 +449,7 @@ export function useMusicPlayer() {
     queue, currentIdx, playing, buffering, error,
     currentTime, duration, bufferedEnd, volume, mode,
     lyricLines, lyricIdx, cover, currentSong,
-    rate, skipCfg, isAudiobook,
+    rate, skipCfg, isAudiobook, detailOpen,
     // 操作
     playList, playSong, addToQueue, toggle, jump, playAt, seek,
     setVolume, cycleMode, removeAt, clearQueue,

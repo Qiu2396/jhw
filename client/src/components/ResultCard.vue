@@ -50,7 +50,7 @@ function onCoverError(e) {
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  animation: rise 0.4s ease both;
+  animation: rise 0.4s ease;
 }
 .card:hover {
   transform: translateY(-4px);

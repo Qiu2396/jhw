@@ -25,6 +25,8 @@ const ResourceView = defineAsyncComponent(() => import('./components/ResourceVie
 const ToolsView = defineAsyncComponent(() => import('./components/ToolsView.vue'));
 const ResumeEditor = defineAsyncComponent(() => import('./components/ResumeEditor.vue'));
 const QuickSitesView = defineAsyncComponent(() => import('./components/QuickSitesView.vue'));
+const WallpaperView = defineAsyncComponent(() => import('./components/WallpaperView.vue'));
+const ScreensaverView = defineAsyncComponent(() => import('./components/ScreensaverView.vue'));
 
 const view = ref('home');          // home | result | sites | audio | comic | tools
 const kw = ref('');
@@ -234,6 +236,16 @@ function goComic() {
   location.hash = '#/comic';
 }
 
+function goWallpaper() {
+  view.value = 'wallpaper';
+  location.hash = '#/wallpaper';
+}
+
+function goScreensaver() {
+  view.value = 'screensaver';
+  location.hash = '#/screensaver';
+}
+
 function goTools() {
   view.value = 'tools';
   location.hash = '#/tools';
@@ -340,6 +352,10 @@ function parseHash() {
     view.value = 'audio';
   } else if (h === '#/comic') {
     view.value = 'comic';
+  } else if (h === '#/wallpaper') {
+    view.value = 'wallpaper';
+  } else if (h === '#/screensaver') {
+    view.value = 'screensaver';
   } else if (h === '#/tools') {
     view.value = 'tools';
   } else if (h === '#/fav') {
@@ -377,7 +393,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <header class="topbar">
+  <header v-if="view !== 'screensaver'" class="topbar">
     <div class="container topbar-inner">
       <div class="logo" @click="goHome">
         <span class="logo-icon"><AppIcon name="play" :size="14" /></span>
@@ -390,11 +406,13 @@ onUnmounted(() => {
       <!-- 导航行：桌面整体靠右；移动端独占一行，导航横向滚动、用户/主题钉在行尾 -->
       <div class="nav-row">
       <nav class="topnav">
-        <button :class="{ active: !['sites','music','novel','audio','comic','tools','resource','fav'].includes(view) }" @click="goHome">首页</button>
+        <button :class="{ active: !['sites','music','novel','audio','comic','wallpaper','screensaver','tools','resource','fav'].includes(view) }" @click="goHome">首页</button>
         <button :class="{ active: view === 'music' }" @click="goMusic">音乐</button>
         <button :class="{ active: view === 'novel' }" @click="goNovel">小说</button>
         <button :class="{ active: view === 'audio' }" @click="goAudio">听书</button>
         <button :class="{ active: view === 'comic' }" @click="goComic">漫画</button>
+        <button :class="{ active: view === 'wallpaper' }" @click="goWallpaper">壁纸</button>
+        <button :class="{ active: view === 'screensaver' }" @click="goScreensaver">屏保</button>
         <button :class="{ active: view === 'fav' }" @click="goFav">常用网站</button>
         <button :class="{ active: view === 'resource' }" @click="goResource">资源</button>
         <button :class="{ active: view === 'tools' }" @click="goTools">工具</button>
@@ -589,6 +607,10 @@ onUnmounted(() => {
 
     <!-- 漫画频道 -->
     <ComicView v-else-if="view === 'comic'" />
+
+    <WallpaperView v-else-if="view === 'wallpaper'" />
+
+    <ScreensaverView v-else-if="view === 'screensaver'" />
 
     <!-- 小工具 -->
     <ToolsView v-else-if="view === 'tools'" />
@@ -795,7 +817,7 @@ onUnmounted(() => {
 .main.has-player { padding-bottom: 130px; }
 
 /* ---------- 首页 ---------- */
-.home .hero { text-align: center; padding: 72px 20px 36px; animation: rise 0.5s ease both; }
+.home .hero { text-align: center; padding: 72px 20px 36px; animation: rise 0.5s ease; }
 .hero h1 {
   font-size: 38px;
   margin: 0 0 14px;
@@ -916,7 +938,7 @@ onUnmounted(() => {
 .feature p { margin: 0; color: var(--text-dim); font-size: 14px; line-height: 1.7; }
 
 /* ---------- 结果页 ---------- */
-.result { padding-top: 34px; animation: rise 0.35s ease both; }
+.result { padding-top: 34px; animation: rise 0.35s ease; }
 .result-status {
   display: flex;
   align-items: center;
