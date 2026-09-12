@@ -19,7 +19,10 @@ const HOT = [
   { label: '建筑', kw: 'architecture', cat: 'architecture' },
   { label: '星空', kw: 'galaxy' },
   { label: '城市', kw: 'city' },
-  { label: '极简', kw: 'minimalist' }
+  { label: '极简', kw: 'minimalist' },
+  { label: '海洋', kw: 'ocean' },
+  { label: '樱花', kw: 'cherry blossom' },
+  { label: '极光', kw: 'aurora' }
 ];
 
 const kw = ref('');
@@ -147,10 +150,10 @@ onMounted(loadDaily);
 <template>
   <div class="wp container">
     <h2 class="page-h"><AppIcon name="image" :size="21" class="h-icon" /> 壁纸</h2>
-    <p class="page-desc">聚合 4K Wallpapers 与 WallpaperCave 的免费壁纸，附必应每日精选；点开可按 4K / 2K / 手机分辨率下载。</p>
+    <p class="page-desc">聚合必应图片、4K Wallpapers、WallpaperCave 的免费壁纸，附必应每日精选；中英文都能搜，点开可按 4K / 2K / 手机分辨率下载。</p>
 
     <form class="wp-search" @submit.prevent="doSearch()">
-      <input v-model="kw" placeholder="搜索壁纸，如：mountain / anime / night sky" maxlength="40" />
+      <input v-model="kw" placeholder="搜索壁纸，中英文均可：风景 / 赛博朋克 / mountain" maxlength="40" />
       <button class="btn primary" type="submit" :disabled="searching">
         <span v-if="searching" class="spin"></span> 搜索
       </button>
@@ -181,7 +184,7 @@ onMounted(loadDaily);
       <div class="wp-more-row" v-if="hasMore && !searching">
         <button class="btn" @click="loadMore">加载更多</button>
       </div>
-      <p v-if="!searching && !results.length && !searchError" class="dim wp-empty">没找到相关壁纸，换个英文关键词试试 🖼</p>
+      <p v-if="!searching && !results.length && !searchError" class="dim wp-empty">没找到相关壁纸，换个词试试（中文英文都行）🖼</p>
     </template>
 
     <!-- 每日精选（默认态） -->
@@ -224,7 +227,7 @@ onMounted(loadDaily);
               v-for="d in detail.downloads"
               :key="d.url"
               class="chip dl"
-              :href="wallpaperImgProxy(d.url, dlName(preview, d))"
+              :href="d.direct ? d.url : wallpaperImgProxy(d.url, dlName(preview, d))"
               target="_blank"
               rel="noopener"
             ><AppIcon name="download" :size="12" /> {{ d.label }}<i v-if="d.note" class="dl-note">{{ d.note }}</i></a>

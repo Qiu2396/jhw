@@ -1,79 +1,79 @@
 <script setup>
 /**
- * 屏保：彩虹鹈鹕骑行 —— 夜色公路上彩色鹈鹕车队双向骑行。
+ * 屏保频道：唯美动画屏保合集。
  *
- * - 场景为 fixed 全屏覆盖（顶栏隐藏），支持 Fullscreen API 真全屏（Esc 退出会连浏览器全屏一起还原并自动回到首页）；
- *   不支持全屏的环境（部分 iOS）退化为页内全屏。
- * - 点击画面加一辆车（上限 24），Esc / 右上角按钮退出；Wake Lock 防息屏。
- * - 鹈鹕本体是 PelicanRider（currentColor 线稿），彩色 = hue 随机 + 霓虹光晕。
+ * - 列表页：每个屏保一张「实时动画」卡片，卡片上有 预览 / 全屏 按钮；
+ * - 预览：页内弹层小窗播放（Teleport 到 body），不进全屏，可从预览直接转全屏；
+ * - 全屏：fixed 覆盖层 + Fullscreen API 真全屏（Esc 退出回到本页），不支持全屏的环境
+ *   （部分 iOS）退化为页内全屏；时钟、控制条自动隐藏、Wake Lock 防息屏由外壳统一负责。
+ * - 各场景是纯展示组件（screensavers/*.Scene.vue），只负责画面本身。
  */
-import { ref, onMounted, onUnmounted } from 'vue';
-import PelicanRider from './PelicanRider.vue';
+import { ref, computed, defineAsyncComponent, nextTick, onMounted, onUnmounted } from 'vue';
 import AppIcon from './AppIcon.vue';
 
-const LANES = 6;
+const SCENES = [
+  {
+    id: 'sakura', name: '樱吹雪', mood: '浪漫',
+    desc: '暮色天空里花瓣纷飞，落日与远山温柔作伴',
+    comp: defineAsyncComponent(() => import('./screensavers/SakuraScene.vue'))
+  },
+  {
+    id: 'aurora', name: '极光之夜', mood: '治愈',
+    desc: '绿紫极光在星空雪原上缓缓流动，湖面映着微光',
+    comp: defineAsyncComponent(() => import('./screensavers/AuroraScene.vue'))
+  },
+  {
+    id: 'firefly', name: '流萤森林', mood: '静谧',
+    desc: '夏夜森林薄雾流动，点点萤火明灭漂浮',
+    comp: defineAsyncComponent(() => import('./screensavers/FireflyScene.vue'))
+  },
+  {
+    id: 'moonsea', name: '海上生明月', mood: '诗意',
+    desc: '云影掠过满月，碎银波光里一叶孤帆缓缓远去',
+    comp: defineAsyncComponent(() => import('./screensavers/MoonSeaScene.vue'))
+  },
+  {
+    id: 'pelican', name: '彩虹鹈鹕骑行', mood: '趣味',
+    desc: '夜色公路上彩色鹈鹕车队双向骑行，点击画面加一辆车',
+    comp: defineAsyncComponent(() => import('./screensavers/PelicanScene.vue'))
+  }
+];
 
-const started = ref(false);
+const previewItem = ref(null);      // 预览弹层中的屏保
+const activeItem = ref(null);       // 全屏运行中的屏保
 const now = ref(new Date());
-const riders = ref([]);
 const controlsVisible = ref(true);
-const sceneEl = ref(null);
+const stageEl = ref(null);          // 全屏舞台（请求 Fullscreen API 的元素）
 const fsSupported = typeof document !== 'undefined' && document.documentElement.requestFullscreen;
 
-let rid = 0;
 let clockTimer = 0;
 let hideTimer = 0;
 let wakeLock = null;
-let everFullscreen = false;   // 真正进过全屏后，退出全屏才联动结束屏保（防环境杂散事件误退出）
+let everFullscreen = false;   // 真正进过全屏后，退出全屏才联动结束（防环境杂散事件误退出）
 
-/* ---- 星空（一次性生成） ---- */
-const stars = Array.from({ length: 70 }, (_, i) => ({
-  id: i,
-  x: Math.random() * 100,
-  y: Math.random() * 58,
-  s: 1 + Math.random() * 1.8,
-  delay: +(Math.random() * 4).toFixed(2),
-  dur: +(2.2 + Math.random() * 3).toFixed(2)
-}));
+const activeComp = computed(() => activeItem.value?.comp);
 
-/* ---- 车队 ---- */
-function spawnRider() {
-  if (riders.value.length >= 24) return;
-  const lane = Math.floor(Math.random() * LANES);
-  riders.value.push({
-    id: ++rid,
-    lane,
-    dir: lane % 2 === 0 ? 1 : -1,          // 偶数车道向右，奇数车道向左（双车道）
-    size: 72 + Math.round(Math.random() * 96),
-    dur: +(7 + Math.random() * 9).toFixed(2),
-    hue: Math.floor(Math.random() * 360),
-    delay: -+(Math.random() * 24).toFixed(2)  // 负延迟：开局就散布在路途各处
-  });
+/* ---- 时钟：每秒刷新，顺带做「全屏丢失」兜底检测 ——
+      部分 webview 不派发 fullscreenchange 事件，靠轮询把退出联动兜住 ---- */
+function tick() {
+  now.value = new Date();
+  if (activeItem.value && everFullscreen && !document.fullscreenElement) exitFull();
 }
-
-function spawnAtClick(e) {
-  if (!started.value) return;
-  spawnRider();
-  wake();
-  showControls();
-}
-
-/* ---- 时钟 ---- */
-function tick() { now.value = new Date(); }
 const hhmm = () => now.value.toTimeString().slice(0, 5);
 const dateLine = () => {
   const d = now.value;
   return `${d.getMonth() + 1}月${d.getDate()}日 周${'日一二三四五六'[d.getDay()]}`;
 };
 
-/* ---- 控制按钮自动隐藏 ---- */
+/* ---- 控制区自动隐藏 ---- */
 function showControls() {
+  if (!activeItem.value) return;
   controlsVisible.value = true;
   clearTimeout(hideTimer);
   hideTimer = setTimeout(() => { controlsVisible.value = false; }, 2600);
 }
 
-/* ---- Wake Lock：屏保运行时防息屏 ---- */
+/* ---- Wake Lock：全屏运行时防息屏 ---- */
 async function requestWake() {
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* 不支持/被拒绝就算了 */ }
 }
@@ -82,22 +82,31 @@ function releaseWake() {
   wakeLock = null;
 }
 function onVisibility() {
-  if (started.value && document.visibilityState === 'visible') requestWake();
+  if (activeItem.value && document.visibilityState === 'visible') requestWake();
 }
 
-/* ---- 开始 / 退出 ---- */
-async function start() {
-  started.value = true;
-  if (!riders.value.length) for (let i = 0; i < 8; i++) spawnRider();
+/* ---- 开始 / 退出全屏 ---- */
+async function startFull(item) {
+  previewItem.value = null;
+  activeItem.value = item;
+  everFullscreen = false;
   clockTimer = setInterval(tick, 1000);
+  tick();
   showControls();
   requestWake();
-  try { await sceneEl.value?.requestFullscreen?.({ navigationUI: 'hide' }); } catch { /* 页内全屏兜底 */ }
+  await nextTick();   // 等舞台渲染出来再请求真全屏
+  try {
+    await stageEl.value?.requestFullscreen?.({ navigationUI: 'hide' });
+    everFullscreen = true;          // promise 成功即确认进过全屏（不依赖事件派发）
+  } catch { /* 页内全屏兜底 */ }
 }
 
-function exit() {
+function exitFull() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  try { location.hash = '#/'; } catch { /* ignore */ }
+  activeItem.value = null;
+  clearInterval(clockTimer);
+  clearTimeout(hideTimer);
+  releaseWake();
 }
 
 function onFsChange() {
@@ -105,23 +114,22 @@ function onFsChange() {
     everFullscreen = true;
     return;
   }
-  // 用户按 Esc 退出浏览器全屏 → 视为结束屏保（页内兜底模式从没进过全屏，不受影响）
-  if (started.value && everFullscreen) exit();
+  // 用户按 Esc 退出浏览器全屏 → 结束屏保回到列表（页内兜底模式从没进过全屏，不受影响）
+  if (activeItem.value && everFullscreen) exitFull();
 }
 function onKey(e) {
-  if (e.key === 'Escape' && started.value) exit();
+  if (e.key !== 'Escape') return;
+  if (previewItem.value) { previewItem.value = null; return; }   // 先关预览
+  if (activeItem.value) exitFull();   // 全屏中浏览器会自行退出，这里幂等兜底
 }
 
 onMounted(() => {
   document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('keydown', onKey);
   document.addEventListener('visibilitychange', onVisibility);
-  showControls();
 });
 onUnmounted(() => {
-  clearInterval(clockTimer);
-  clearTimeout(hideTimer);
-  releaseWake();
+  exitFull();
   document.removeEventListener('fullscreenchange', onFsChange);
   document.removeEventListener('keydown', onKey);
   document.removeEventListener('visibilitychange', onVisibility);
@@ -129,165 +137,189 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="sceneEl" class="ss" @click="spawnAtClick" @mousemove="showControls" @touchstart="showControls">
-    <!-- 夜空 -->
-    <div class="sky"></div>
-    <span
-      v-for="st in stars"
-      :key="st.id"
-      class="star"
-      :style="{ left: st.x + '%', top: st.y + '%', width: st.s + 'px', height: st.s + 'px', animationDelay: st.delay + 's', animationDuration: st.dur + 's' }"
-    ></span>
-    <div class="moon"></div>
+  <div class="ss container">
+    <h2 class="page-h"><AppIcon name="monitor" :size="21" class="h-icon" /> 屏保</h2>
+    <p class="page-desc">唯美动画屏保合集：先预览，喜欢就全屏挂着 —— 自带时钟、防息屏，Esc 或右上角按钮退出。</p>
 
-    <!-- 远山 / 近丘（视差滚动） -->
-    <div class="hills far"></div>
-    <div class="hills near"></div>
+    <div class="ss-grid">
+      <div v-for="s in SCENES" :key="s.id" class="ss-card">
+        <div class="ss-live" title="点击预览" @click="previewItem = s">
+          <component :is="s.comp" />
+        </div>
+        <span class="ss-mood">{{ s.mood }}</span>
+        <div class="ss-meta">
+          <div class="ss-txt">
+            <h3>{{ s.name }}</h3>
+            <p>{{ s.desc }}</p>
+          </div>
+          <div class="ss-actions">
+            <button class="btn small" title="小窗预览" @click="previewItem = s">
+              <AppIcon name="search" :size="13" /> 预览
+            </button>
+            <button class="btn primary small" title="进入全屏" @click="startFull(s)">
+              <AppIcon name="monitor" :size="13" /> 全屏
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
-    <!-- 公路与车队 -->
-    <div class="road">
-      <div class="road-line"></div>
+    <!-- 预览弹层：Teleport 到 body，fixed 定位不受祖先影响 -->
+    <Teleport to="body">
+      <div v-if="previewItem" class="pv-mask" @click.self="previewItem = null">
+        <div class="pv-box">
+          <div class="pv-head">
+            <span class="pv-name">{{ previewItem.name }}</span>
+            <span class="badge">{{ previewItem.mood }}</span>
+            <button class="pv-close" title="关闭预览" @click="previewItem = null"><AppIcon name="x" :size="16" /></button>
+          </div>
+          <div class="pv-stage">
+            <component :is="previewItem.comp" />
+          </div>
+          <div class="pv-foot">
+            <span class="dim pv-tip">{{ fsSupported ? '全屏后 Esc 退出' : '当前环境不支持全屏，将以页内全屏播放' }}</span>
+            <button class="btn primary" @click="startFull(previewItem)">
+              <AppIcon name="monitor" :size="14" /> 全屏播放
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 全屏舞台：Teleport 到 body -->
+    <Teleport to="body">
       <div
-        v-for="r in riders"
-        :key="r.id"
-        class="rider"
-        :class="{ back: r.dir === -1 }"
-        :style="{
-          top: 6 + r.lane * 15 + '%',
-          animationDuration: r.dur + 's',
-          animationDelay: r.delay + 's'
-        }"
+        v-if="activeItem"
+        ref="stageEl"
+        class="fs-stage"
+        @mousemove="showControls"
+        @touchstart="showControls"
+        @click="showControls"
       >
-        <span class="rider-flip" :style="{ color: `hsl(${r.hue} 92% 66%)` }">
-          <PelicanRider :size="r.size" />
-        </span>
+        <component :is="activeComp" />
+        <div class="clock">
+          <div class="clock-time">{{ hhmm() }}</div>
+          <div class="clock-date">{{ dateLine() }}</div>
+        </div>
+        <div class="controls" :class="{ show: controlsVisible }">
+          <span class="fs-name">{{ activeItem.name }}</span>
+          <button class="exit-btn" title="退出屏保 (Esc)" @click.stop="exitFull"><AppIcon name="x" :size="18" /></button>
+        </div>
       </div>
-    </div>
-
-    <!-- 时钟 -->
-    <div v-if="started" class="clock">
-      <div class="clock-time">{{ hhmm() }}</div>
-      <div class="clock-date">{{ dateLine() }}</div>
-    </div>
-
-    <!-- 控制区：鼠标动一下出现，2.6s 后隐去 -->
-    <div class="controls" :class="{ show: controlsVisible }">
-      <button class="exit-btn" title="退出屏保 (Esc)" @click.stop="exit"><AppIcon name="x" :size="18" /></button>
-    </div>
-
-    <!-- 启动页 -->
-    <div v-if="!started" class="intro" @click.stop>
-      <div class="intro-riders" aria-hidden="true">
-        <span class="intro-rider" style="color: hsl(45 92% 66%)"><PelicanRider :size="150" /></span>
-        <span class="intro-rider d" style="color: hsl(320 92% 68%)"><PelicanRider :size="110" /></span>
-        <span class="intro-rider u" style="color: hsl(150 92% 62%)"><PelicanRider :size="88" /></span>
-      </div>
-      <h2 class="intro-title">彩虹鹈鹕骑行</h2>
-      <p class="intro-sub">夜色公路 · 彩色鹈鹕车队 · 时钟与防息屏</p>
-      <button class="btn primary big" @click="start">
-        <AppIcon name="play" :size="14" /> {{ fsSupported ? '开始屏保（全屏）' : '开始屏保' }}
-      </button>
-      <p class="intro-hint dim">全屏后点击画面可加车 · Esc 或右上角退出</p>
-    </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
-.ss {
+.ss { padding-top: 34px; animation: rise 0.35s ease; }
+.page-h { display: flex; align-items: center; gap: 9px; margin: 0 0 6px; }
+.h-icon { color: var(--gold); }
+.page-desc { color: var(--text-dim); margin: 0 0 22px; font-size: 14px; }
+
+.ss-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  padding-bottom: 30px;
+}
+.ss-card {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color 0.18s, transform 0.18s, box-shadow 0.18s;
+}
+.ss-card:hover {
+  border-color: rgba(242, 185, 75, 0.45);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-1);
+}
+.ss-live {
+  aspect-ratio: 16 / 9;
+  position: relative;
+  cursor: pointer;
+  background: #0b1030;
+}
+.ss-live > * { position: absolute; inset: 0; }   /* 异步场景组件铺满预览区 */
+
+.ss-mood {
+  position: absolute;
+  top: 10px; right: 10px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+.ss-meta { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.ss-txt { flex: 1; min-width: 0; }
+.ss-txt h3 { margin: 0 0 3px; font-size: 15px; }
+.ss-txt p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ss-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ---- 预览弹层 ---- */
+.pv-mask {
+  position: fixed; inset: 0; z-index: 110;
+  background: rgba(8, 8, 12, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px;
+  animation: fade-in 0.18s ease both;
+}
+.pv-box {
+  width: min(920px, 96vw);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+  box-shadow: 0 12px 60px rgba(0, 0, 0, 0.55);
+}
+.pv-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+.pv-name { font-weight: 700; font-size: 15px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-close {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-dim);
+  background: var(--hover);
+  transition: all 0.15s;
+}
+.pv-close:hover { color: var(--text); }
+.pv-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-height: 62vh;
+  margin: 0 14px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0b1030;
+}
+.pv-stage > * { position: absolute; inset: 0; }
+.pv-foot { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.pv-tip { flex: 1; min-width: 0; font-size: 12.5px; }
+
+/* ---- 全屏舞台 ---- */
+.fs-stage {
   position: fixed;
   inset: 0;
   z-index: 55;                       /* 低于 MiniPlayer(60)：听歌时播放条仍在 */
   overflow: hidden;
-  background: linear-gradient(#0b1030 0%, #191443 46%, #3a1d58 74%, #63294e 100%);
-  cursor: crosshair;
   user-select: none;
 }
+.fs-stage > * { position: absolute; inset: 0; }
 
-/* ---- 夜空 ---- */
-.sky { position: absolute; inset: 0; }
-.star {
-  position: absolute;
-  border-radius: 50%;
-  background: #fff;
-  opacity: 0.25;
-  animation: ss-twinkle linear infinite;
-}
-@keyframes ss-twinkle { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.95; } }
-.moon {
-  position: absolute;
-  top: 7%; right: 9%;
-  width: 72px; height: 72px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 34% 34%, #fff7d8, #ffe9a3 58%, #f4cf72);
-  box-shadow: 0 0 34px 10px rgba(255, 232, 160, 0.35);
-}
-
-/* ---- 视差山丘（重复圆弧，background-position 滚动） ---- */
-.hills {
-  position: absolute;
-  left: 0; right: 0;
-  background-repeat: repeat-x;
-  background-size: 680px 100%;
-}
-.hills.far {
-  bottom: 24%;
-  height: 17%;
-  background-image: radial-gradient(140px 120px at 50% 100%, #232a52 98%, transparent 100%);
-  animation: ss-roll 64s linear infinite;
-  opacity: 0.9;
-}
-.hills.near {
-  bottom: 24.6%;
-  height: 12%;
-  background-image: radial-gradient(190px 150px at 50% 100%, #171c3c 98%, transparent 100%);
-  animation: ss-roll 38s linear infinite;
-}
-@keyframes ss-roll { to { background-position-x: -1360px; } }
-.hills.back { animation-direction: reverse; }
-
-/* ---- 公路 ---- */
-.road {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 26%;
-  background: linear-gradient(#101527, #0a0d1b);
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-}
-.road-line {
-  position: absolute;
-  inset: auto 0 50%;
-  height: 3px;
-  background: repeating-linear-gradient(90deg, rgba(255, 214, 120, 0.5) 0 34px, transparent 34px 74px);
-  animation: ss-dash 1.1s linear infinite;
-  opacity: 0.5;
-}
-@keyframes ss-dash { to { background-position-x: -108px; } }
-
-/* ---- 骑手：横穿动画，reverse = 反向车道 ---- */
-.rider {
-  position: absolute;
-  left: 0;
-  width: 40vw;
-  pointer-events: none;
-  animation: ss-ride linear infinite;
-}
-.rider.back { animation-direction: reverse; }
-@keyframes ss-ride {
-  from { transform: translateX(-46vw); }
-  to { transform: translateX(130vw); }
-}
-.rider-flip {
-  display: inline-block;
-  filter:
-    drop-shadow(0 0 5px currentColor)
-    drop-shadow(0 0 16px rgba(255, 255, 255, 0.18));
-}
-.rider.back .rider-flip { transform: scaleX(-1); }
-
-/* ---- 时钟 ---- */
 .clock {
-  position: absolute;
-  top: 7%; left: 6%;
+  top: 7%; left: 6%; bottom: auto; right: auto;
   color: rgba(255, 244, 214, 0.88);
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45);
   pointer-events: none;
@@ -301,9 +333,19 @@ onUnmounted(() => {
 }
 .clock-date { margin-top: 8px; font-size: clamp(15px, 2.2vw, 24px); opacity: 0.8; }
 
-/* ---- 控制区 ---- */
-.controls { position: absolute; top: 16px; right: 16px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.controls {
+  position: absolute;
+  top: 16px; right: 16px; bottom: auto; left: auto;
+  display: flex; align-items: center; gap: 12px;
+  opacity: 0; transition: opacity 0.3s; pointer-events: none;
+}
 .controls.show { opacity: 1; pointer-events: auto; }
+.fs-name {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
+}
 .exit-btn {
   width: 42px; height: 42px;
   border-radius: 50%;
@@ -315,29 +357,9 @@ onUnmounted(() => {
 }
 .exit-btn:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
 
-/* ---- 启动页 ---- */
-.intro {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  text-align: center;
-  padding: 20px;
-}
-.intro-riders { display: flex; align-items: flex-end; gap: 26px; margin-bottom: 14px; }
-.intro-rider { filter: drop-shadow(0 0 8px currentColor); }
-.intro-rider.d { transform: translateY(10px); }
-.intro-rider.u { transform: translateY(22px); }
-.intro-title { color: #fff; font-size: clamp(26px, 5vw, 44px); margin: 0; letter-spacing: 0.06em; }
-.intro-sub { color: rgba(255, 244, 214, 0.75); margin: 0 0 22px; font-size: 15px; }
-.intro-hint { font-size: 13px; margin: 14px 0 0; color: rgba(255, 255, 255, 0.4); }
-.btn.big { height: 46px; padding: 0 26px; font-size: 16px; border-radius: 12px; }
-
-@media (prefers-reduced-motion: reduce) {
-  .star, .hills, .road-line, .rider { animation: none; }
-  .hills.far { background-position: 0 0; }
+@media (max-width: 720px) {
+  .ss { padding-top: 22px; }
+  .ss-grid { grid-template-columns: 1fr; gap: 12px; }
+  .pv-stage { max-height: 52vh; }
 }
 </style>

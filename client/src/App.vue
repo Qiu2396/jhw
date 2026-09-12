@@ -14,19 +14,29 @@ import {
 import { search, getSources } from './api.js';
 
 // 各频道视图按需加载（路由级代码分割）：首屏只带核心搜索/播放条，
-// 其余功能（含 hls.js 等大依赖）进入对应频道时才拉取对应 chunk
-const PlayerModal = defineAsyncComponent(() => import('./components/PlayerModal.vue'));
-const SourcesView = defineAsyncComponent(() => import('./components/SourcesView.vue'));
-const MusicView = defineAsyncComponent(() => import('./components/MusicView.vue'));
-const NovelView = defineAsyncComponent(() => import('./components/NovelView.vue'));
-const AudiobookView = defineAsyncComponent(() => import('./components/AudiobookView.vue'));
-const ComicView = defineAsyncComponent(() => import('./components/ComicView.vue'));
-const ResourceView = defineAsyncComponent(() => import('./components/ResourceView.vue'));
-const ToolsView = defineAsyncComponent(() => import('./components/ToolsView.vue'));
-const ResumeEditor = defineAsyncComponent(() => import('./components/ResumeEditor.vue'));
-const QuickSitesView = defineAsyncComponent(() => import('./components/QuickSitesView.vue'));
-const WallpaperView = defineAsyncComponent(() => import('./components/WallpaperView.vue'));
-const ScreensaverView = defineAsyncComponent(() => import('./components/ScreensaverView.vue'));
+// 其余功能（含 hls.js 等大依赖）进入对应频道时才拉取对应 chunk。
+// lazy 包一层失败自动重试：chunk 网络瞬断时自动重拉，避免频道页面空白
+function lazy(loader) {
+  return defineAsyncComponent({
+    loader,
+    onError(error, retry, fail, attempts) {
+      if (attempts <= 2) retry();
+      else fail();
+    }
+  });
+}
+const PlayerModal = lazy(() => import('./components/PlayerModal.vue'));
+const SourcesView = lazy(() => import('./components/SourcesView.vue'));
+const MusicView = lazy(() => import('./components/MusicView.vue'));
+const NovelView = lazy(() => import('./components/NovelView.vue'));
+const AudiobookView = lazy(() => import('./components/AudiobookView.vue'));
+const ComicView = lazy(() => import('./components/ComicView.vue'));
+const ResourceView = lazy(() => import('./components/ResourceView.vue'));
+const ToolsView = lazy(() => import('./components/ToolsView.vue'));
+const ResumeEditor = lazy(() => import('./components/ResumeEditor.vue'));
+const QuickSitesView = lazy(() => import('./components/QuickSitesView.vue'));
+const WallpaperView = lazy(() => import('./components/WallpaperView.vue'));
+const ScreensaverView = lazy(() => import('./components/ScreensaverView.vue'));
 
 const view = ref('home');          // home | result | sites | audio | comic | tools
 const kw = ref('');
@@ -393,14 +403,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <header v-if="view !== 'screensaver'" class="topbar">
+  <header class="topbar">
     <div class="container topbar-inner">
       <div class="logo" @click="goHome">
         <span class="logo-icon"><AppIcon name="play" :size="14" /></span>
         <span class="logo-text">聚搜王</span>
         <span class="logo-sub">影视 · 音乐 · 书 · 漫画 · 资源</span>
       </div>
-      <div v-if="view !== 'home'" class="topbar-search">
+      <!-- 只在搜索结果页放搜索框：切频道时顶栏保持不动（各频道有自己的站内搜索） -->
+      <div v-if="view === 'result'" class="topbar-search">
         <SearchBar :initial="kw" :compact="true" @search="doSearch" />
       </div>
       <!-- 导航行：桌面整体靠右；移动端独占一行，导航横向滚动、用户/主题钉在行尾 -->

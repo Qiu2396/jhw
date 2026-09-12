@@ -265,8 +265,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .np-disc-side {
   position: relative;
   flex-shrink: 0;
-  width: clamp(220px, 30vw, 360px);
-  height: clamp(220px, 30vw, 360px);
+  --np: clamp(220px, 30vw, 360px);
+  width: var(--np);
+  height: var(--np);
 }
 .disc {
   position: relative;
@@ -307,17 +308,20 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .disc.spin { animation: np-spin 22s linear infinite; }
 @keyframes np-spin { to { transform: rotate(360deg); } }
 
-/* 唱针：暂停时抬起，播放时落到唱片上 */
+/* 唱针：暂停时抬起停在碟外，播放时针尖落在碟面右上沟槽区（≈0.8R）。
+   轴心在碟右上角外、臂长 = 碟径 33%，坐标全部按 --np 缩放，
+   220~360px 任意碟径下落点比例一致。 */
 .needle {
   position: absolute;
-  top: -26px; right: -6px;
+  top: -6%;
+  right: 1%;
   z-index: 2;
   transform-origin: 8px 9px;
-  transform: rotate(-24deg);
+  transform: rotate(2deg);
   transition: transform 0.4s ease;
 }
-.needle.on { transform: rotate(-2deg); }
-.needle-arm { display: block; width: 5px; height: 118px; border-radius: 3px; background: linear-gradient(#e8e8ee, #b9b9c4); }
+.needle.on { transform: rotate(41deg); }
+.needle-arm { display: block; width: 5px; height: calc(var(--np) * 0.36); border-radius: 3px; background: linear-gradient(#e8e8ee, #b9b9c4); }
 .needle-head { position: absolute; top: -4px; left: -5px; width: 26px; height: 26px; border-radius: 50%; background: #d8d8e0; box-shadow: inset 0 -2px 4px rgba(0,0,0,0.25); }
 
 /* 歌词 */

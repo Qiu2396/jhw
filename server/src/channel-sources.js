@@ -20,6 +20,7 @@ export const CHANNEL_SOURCES = [
   { kind: 'comic', kindName: '漫画', id: 'wmanhua', name: 'W漫画', desc: '主流国漫书库，图片无防盗链' },
   { kind: 'wallpaper', kindName: '壁纸', id: 'w4k', name: '4K Wallpapers', desc: '分类全、标签规整，支持 4K/2K/手机多分辨率下载' },
   { kind: 'wallpaper', kindName: '壁纸', id: 'wpc', name: 'WallpaperCave', desc: '社区图库量大，原图单分辨率' },
+  { kind: 'wallpaper', kindName: '壁纸', id: 'bingimg', name: '必应图片', desc: '必应图库聚合搜索，原生支持中文关键词，含必应缩放大图与原图直链' },
   { kind: 'wallpaper', kindName: '壁纸', id: 'bing', name: '必应每日精选', desc: '每日首页壁纸，含 4K UHD，支持往期翻页' },
   { kind: 'wallpaper', kindName: '壁纸', id: 'picsum', name: 'Picsum 摄影', desc: '精选摄影图集，无搜索、按图集浏览' }
 ];

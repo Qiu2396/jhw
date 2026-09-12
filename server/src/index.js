@@ -483,7 +483,7 @@ app.get('/api/wallpaper/detail', async (req, res) => {
   const src = String(req.query.src || '').trim();
   const url = String(req.query.url || '').trim();
   if (!src || !url) return res.status(400).json({ error: '缺少参数 src / url' });
-  if (src !== 'bing' && !isAllowedWallpaperUrl(url)) return res.status(400).json({ error: 'url 不在收录源范围内' });
+  if (src !== 'bing' && src !== 'bingimg' && !isAllowedWallpaperUrl(url)) return res.status(400).json({ error: 'url 不在收录源范围内' });
   try {
     res.json(await wallpaperDetail(src, url));
   } catch (e) {

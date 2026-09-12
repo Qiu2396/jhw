@@ -15,6 +15,7 @@ import { isDisabled } from './channel-sources.js';
 const API = 'https://music-api.gdstudio.xyz/api.php';
 const SOURCE = 'netease';
 const UA = 'JuSouMusic/0.1';
+const UA_BROWSER = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 async function gdFetch(params) {
   if (isDisabled('music', 'gdstudio')) throw new Error('音乐源已停用（站点目录可重新启用）');
@@ -75,9 +76,34 @@ export async function musicLyric(songId) {
   return { lyric: r.lyric || '', tlyric: r.tlyric || '' };
 }
 
+/** 专辑封面：songId 即网易云歌曲 id，直接问网易云官方接口拿真实专辑图
+ *  （GDStudio 的 pic 走旧版 songId.jpg 直拼格式，2026-09 实测已 404，导致唱片只剩兜底图案） */
+async function neteaseAlbumPic(songId, size) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const res = await fetch(
+      `https://music.163.com/api/song/detail?id=${encodeURIComponent(songId)}&ids=${encodeURIComponent(`[${songId}]`)}`,
+      { signal: ctl.signal, headers: { 'User-Agent': UA_BROWSER, Referer: 'https://music.163.com/' } }
+    );
+    if (!res.ok) throw new Error(`网易云返回 ${res.status}`);
+    const d = await res.json();
+    const pic = d?.songs?.[0]?.album?.picUrl;
+    if (!pic) throw new Error('无专辑图');
+    return `${pic}?param=${size}y${size}`;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function musicPic(songId, size = 300) {
-  const r = await gdFetch({ types: 'pic', id: String(songId), size: String(size) });
-  return { url: r.url || '' };
+  size = Math.min(Math.max(parseInt(size) || 300, 100), 1500);
+  try { return { url: await neteaseAlbumPic(songId, size) }; }
+  catch { /* 网易云接口不可用 → 退回聚合服务 */ }
+  try {
+    const r = await gdFetch({ types: 'pic', id: String(songId), size: String(size) });
+    return { url: r.url || '' };
+  } catch { return { url: '' }; }
 }
 
 /** 单源探测（站点目录「检测」用） */

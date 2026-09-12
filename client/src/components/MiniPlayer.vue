@@ -43,7 +43,6 @@ function pickSkip(head, tail) {
   setSkip(head, tail);
 }
 const lyricsEl = ref(null);
-const barEl = ref(null);
 
 const pct = computed(() => duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0);
 const bufPct = computed(() => duration.value > 0 ? Math.min((bufferedEnd.value / duration.value) * 100, 100) : 0);
@@ -61,10 +60,10 @@ function volIconName() {
   return volume.value < 0.5 ? 'volume-1' : 'volume-2';
 }
 
-// ---- 进度条拖拽 seek ----
+// ---- 进度条拖拽 seek（顶部细条与中部内嵌条共用，取 currentTarget 即可） ----
 let dragging = false;
 function posToTime(e) {
-  const el = barEl.value;
+  const el = e.currentTarget;
   if (!el || !duration.value) return 0;
   const r = el.getBoundingClientRect();
   const ratio = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1);
@@ -98,8 +97,8 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
 <template>
   <Transition name="mp-rise">
     <div v-if="queue.length" class="mini">
-      <!-- 顶部细进度条（可拖拽） -->
-      <div class="progress" ref="barEl" @pointerdown="onBarDown">
+      <!-- 顶部细进度条（窄屏专用；桌面端进度条内嵌在播放条中部） -->
+      <div class="progress" @pointerdown="onBarDown">
         <div class="p-buf" :style="{ width: bufPct + '%' }"></div>
         <div class="p-fill" :style="{ width: pct + '%' }"><span class="p-dot"></span></div>
       </div>
@@ -121,7 +120,7 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
           </div>
         </div>
 
-        <!-- 中：播放控制 -->
+        <!-- 中：播放控制（三段式对称布局，按钮组恒在屏幕水平居中） -->
         <div class="m-center">
           <button class="pill" :title="modeMeta.label" @click="cycleMode">
             <AppIcon :name="modeMeta.icon" :size="13" /><span class="pill-txt">{{ modeMeta.label }}</span>
@@ -146,7 +145,7 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
           ><AppIcon name="fast-forward" :size="15" /></button>
         </div>
 
-        <!-- 右：时间 / 音量 / 面板 / 关闭 -->
+        <!-- 右：时间/音量/面板/关闭 -->
         <div class="m-right">
           <span class="time">{{ fmt(currentTime) }} / {{ fmt(duration) }}</span>
           <div class="vol">
@@ -296,15 +295,28 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
 .progress:hover .p-dot { opacity: 1; }
 
 /* ---- 主体 ---- */
+/* 桌面端三段式：两侧列等宽（minmax(0,1fr)），中列播放控制恒在屏幕水平居中 */
 .mini-inner {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 14px;
   max-width: 1280px;
   margin: 0 auto;
   padding: 10px 20px;
 }
-.m-left { display: flex; align-items: center; gap: 13px; min-width: 0; flex: 1; cursor: pointer; }
+.m-left { justify-self: start; }
+.m-center { justify-self: center; }
+.m-right { justify-self: end; }
+/* 中窄屏（≤1000）放不下对称三列，退化为弹性布局：信息撑满、控制靠中偏左 */
+@media (max-width: 1000px) {
+  .mini-inner { display: flex; }
+  .m-left { flex: 1; min-width: 0; justify-self: auto; }
+  .m-center { justify-self: auto; flex-shrink: 0; }
+  .m-right { justify-self: auto; flex-shrink: 0; }
+}
+/* 信息区只占内容宽度（可收缩截断） */
+.m-left { display: flex; align-items: center; gap: 13px; min-width: 0; cursor: pointer; }
 .disc {
   width: 46px; height: 46px;
   border-radius: 50%;
@@ -527,12 +539,11 @@ watch(queue, (q) => { if (!q.length) panelTab.value = ''; });
   .skip-row { flex-wrap: wrap; }
 }
 /* 超窄屏（≤420）：播放条变两行——第一行封面+歌名（完整可读），
-   第二行全部控制按钮居中；模式胶囊收进列表面板，其余按钮全部保留 */
+   第二行播放控制居中、其余按钮靠右；模式胶囊收进列表面板，其余按钮全部保留 */
 @media (max-width: 420px) {
   .mini-inner { flex-wrap: wrap; row-gap: 2px; }
   .m-left { flex: 1 1 100%; }
   .m-center { flex: 1; justify-content: center; gap: 4px; }
-  .m-right { }
   .pill { display: none; }
   .m-name, .m-sub { max-width: none; }
 }

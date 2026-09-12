@@ -283,7 +283,7 @@ async function loadCurrent(autoplay = true) {
     const [u, l, pic] = await Promise.allSettled([
       musicUrl(resolved.songId, 320000),
       musicLyric(resolved.songId),
-      musicPic(resolved.songId, 300)
+      musicPic(resolved.songId, 500)   // 唱片中心显示约 220px，2x 屏需要 500 档
     ]);
     if (seq !== loadSeq) return;
     if (u.status !== 'fulfilled' || !u.value.url) {
